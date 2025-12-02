@@ -69,7 +69,7 @@ class PPOAgent:
         self.network: PPONetwork = PPONetwork(state_dim, action_dims).to(self.device)
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=LEARNING_RATE)
 
-    def initialize_network(self, model_filepath: str):
+    def load_network(self, model_filepath: str):
         checkpoint = torch.load(model_filepath, map_location=self.device)
         self.network.load_state_dict(checkpoint["network_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
