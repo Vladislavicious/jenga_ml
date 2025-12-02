@@ -1,7 +1,8 @@
 # there will be all MuJoCo-related stuff
 
 
-from typing import List, Tuple
+from typing import Any, Dict, List, SupportsFloat, Tuple
+import gymnasium as gym
 
 import numpy as np
 
@@ -23,9 +24,11 @@ class FakeRewardCalculator:
         pass
 
 
-class FakeEnvironment:
+class FakeEnvironment(gym.Env):
     def __init__(self):
         self._state_dim = 10
+
+        self.reward_calculator = FakeRewardCalculator
 
     def get_state_dim(self) -> int:
         return self._state_dim
@@ -39,19 +42,27 @@ class FakeEnvironment:
         ]  # 10 блоков, 11 значений каждой силы по каждой оси
 
     # функция выполняет шаг симуляции, используя входные воздействия action
-    # по окончании action, заполняет параметрами reward_calculator, используя функцию fill_physics
     # возвращает:
-    # next_state: np.ndarray - состояние окружения после выполнения шага
-    # simulation_end: bool - симуляция аварийно завершена/башня упала = True
+    # observation: np.ndarray - состояние окружения после выполнения шага
+    # reward: SupportsFloat - награда за действие, вычисляется с self.reward_calculator, используя функцию fill_physics
+    # terminated: bool - симуляция завершена
+    # truncated: bool - ввремя симуляции закончилось
+    # info: Dict[str, Any] - дополнительная отладочная информация
     def step(
-        self, action: np.ndarray, reward_calculator: FakeRewardCalculator
-    ) -> Tuple[np.ndarray, bool]:
+        self, action: np.ndarray
+    ) -> Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]:
         pass
 
     # cброс данных окружения (MuJoCo) - координаты каждого блока
     # еще не уверен по поводу размеров блоков и нужны ли они алгоритму обучения
+    # seed: int - начальное значение PRNG окружения
     # возвращает нулевое состояние - после совершения сброса
-    def reset(self) -> np.ndarray:
+    # info: Dict[str, Any] - дополнительная отладочная информация
+    def reset(
+        self,
+        seed: int | None = None,
+        options: Dict[str, Any] | None = None,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         pass
 
     # вспомогательная функция для получения текущего состоянияы
