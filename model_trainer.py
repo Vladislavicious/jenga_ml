@@ -4,6 +4,8 @@ import numpy as np
 from environment import FakeEnvironment, FakeRewardCalculator
 from ppo import PPOAgent
 
+EVALUATION_STEP_COUNT: int = 5
+
 
 class JengaML_Trainer:
     def __init__(
@@ -28,8 +30,6 @@ class JengaML_Trainer:
             state_dim=state_dimensions,
             action_dims=action_dimensions,
         )
-
-        self.reward_calculator = FakeRewardCalculator()
 
     def train(self):
         """Основной цикл обучения"""
@@ -72,22 +72,21 @@ class JengaML_Trainer:
         values = []
         log_probs = []
 
-        state = self.model_environment.reset()
+        state = self.model_environment.reset(None)
         episode_reward = 0
         episode_length = 0
 
         for _ in range(self.n_steps):
             action, log_prob, value = self.agent.get_action(state)
 
-            next_state, done = self.model_environment.step(
-                action, self.reward_calculator
+            next_state, reward, done, truncated, info = self.model_environment.step(
+                action
             )
-            reward = self.reward_calculator.calculate_reward()
 
             states.append(state)
             actions.append(action)
             rewards.append(reward)
-            dones.append(done)
+            dones.append(done or truncated)
             values.append(value)
             log_probs.append(log_prob)
 
@@ -95,7 +94,7 @@ class JengaML_Trainer:
             episode_reward += reward
             episode_length += 1
 
-            if done:
+            if done or truncated:
                 self.episode_rewards.append(episode_reward)
                 self.episode_lengths.append(episode_length)
 
@@ -118,4 +117,38 @@ class JengaML_Trainer:
         return step_data
 
     def evaluate(self, visualize: bool = False):
-        pass
+        """Оценка обученной модели"""
+        print(f"\nОценка модели на {EVALUATION_STEP_COUNT} эпизодах...")
+
+        episode_rewards = []
+        episode_heights = []
+
+        for episode in range(EVALUATION_STEP_COUNT):
+            state, _ = self.model_environment.reset(None)
+            done = False
+            truncated = False
+            total_reward = 0
+            max_height = 0
+
+            while not (done or truncated):
+                action, _, _ = self.agent.get_action(state)
+                state, reward, done, truncated, info = self.model_environment.step(
+                    action
+                )
+                total_reward += reward
+
+                if "max_height" in info.keys():
+                    max_height = max(max_height, info["max_height"])
+                    print(f"Макс. высота = {max_height:.2f}")
+
+            episode_rewards.append(total_reward)
+            episode_heights.append(max_height)
+
+            print(f"Эпизод {episode + 1}: Награда = {total_reward:.2f}")
+
+            print(
+                f"\nСредняя награда: {np.mean(episode_rewards):.2f} ± {np.std(episode_rewards):.2f}"
+            )
+            print(
+                f"Средняя макс. высота: {np.mean(episode_heights):.2f} ± {np.std(episode_heights):.2f}"
+            )

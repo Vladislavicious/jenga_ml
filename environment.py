@@ -65,6 +65,19 @@ class FakeEnvironment(gym.Env):
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         pass
 
+    # функция отображения, делает отображение по свойству render_mode (смотри gym.Env)
+    # для простоты отрисовываем только один режим
+    def render(self, mode: str):
+        """Визуализация среды"""
+        if self.render_mode == "human":
+            self._render_frame()
+
+        return None
+
+    # вспомогательная функция для отображения текущего состояния
+    def _render_frame(self):
+        pass
+
     # вспомогательная функция для получения текущего состоянияы
     def _get_current_state(self) -> np.ndarray:
         return np.array()
