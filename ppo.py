@@ -65,6 +65,15 @@ class PPOAgent:
         self.value_coef = VALUE_COEF
         self.max_grad_norm = MAX_GRAD_NORM
 
+    def initialize_network(self, state_dim: int, action_dims: List[int]):
+        self.network: PPONetwork = PPONetwork(state_dim, action_dims).to(self.device)
+        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=LEARNING_RATE)
+
+    def initialize_network(self, model_filepath: str):
+        checkpoint = torch.load(model_filepath, map_location=self.device)
+        self.network.load_state_dict(checkpoint["network_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
     # Выбор действия для заданного состояния
     def get_action(
         self, state: np.ndarray
@@ -223,16 +232,11 @@ class PPOAgent:
 
         return avg_policy_loss, avg_value_loss, avg_entropy
 
-    def save(self, path: str):
+    def save_model(self, model_filepath: str):
         torch.save(
             {
                 "network_state_dict": self.network.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
             },
-            path,
+            model_filepath,
         )
-
-    def load(self, path: str):
-        checkpoint = torch.load(path, map_location=self.device)
-        self.network.load_state_dict(checkpoint["network_state_dict"])
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
