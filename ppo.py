@@ -11,33 +11,38 @@ from torch.utils.data import DataLoader, TensorDataset
 
 # TODO: переместить в другое место
 LEARNING_RATE: float = 3e-4
-GAE_LAMBDA: float = 0.95,
-GAMMA: float = 0.99,
-CLIP_EPSILON: float = 0.2,
-ENTROPY_COEF: float = 0.01,
-VALUE_COEF: float = 0.5,
-MAX_GRAD_NORM: float = 0.5,
-DEVICE: str = 'cuda'
+GAE_LAMBDA: float = (0.95,)
+GAMMA: float = (0.99,)
+CLIP_EPSILON: float = (0.2,)
+ENTROPY_COEF: float = (0.01,)
+VALUE_COEF: float = (0.5,)
+MAX_GRAD_NORM: float = (0.5,)
+DEVICE: str = "cuda"
+
 
 # Нейронная сеть для PPO
 class PPONetwork(nn.Module):
-    def __init__(self, state_dim_count: int, action_dims_count: List[int],
-                 hidden_dim_count: int = 256):
+    def __init__(
+        self,
+        state_dim_count: int,
+        action_dims_count: List[int],
+        hidden_dim_count: int = 256,
+    ):
         super().__init__()
 
-        self.state_dim_count = state_dim_count # Размерность вектора состояния
+        self.state_dim_count = state_dim_count  # Размерность вектора состояния
         self.action_dims_count = action_dims_count  # Размерности векторов для каждого компонента действия (выбор блока, сила по X, сила по Y, сила по Z)
 
         self.shared_features = nn.Sequential(
             nn.Linear(self.state_dim_count, hidden_dim_count),
-            nn.Tanh(), # Функция активации
+            nn.Tanh(),  # Функция активации
             nn.Linear(hidden_dim_count, hidden_dim_count),
             nn.Tanh(),
         )
 
-        self.actor_heads = nn.ModuleList([
-            nn.Linear(hidden_dim_count, dim) for dim in self.action_dims_count
-        ])
+        self.actor_heads = nn.ModuleList(
+            [nn.Linear(hidden_dim_count, dim) for dim in self.action_dims_count]
+        )
         self.critic_head = nn.Linear(hidden_dim_count, 1)
 
     def forward(self, state: torch.Tensor) -> Tuple[List[torch.Tensor], torch.Tensor]:
@@ -48,14 +53,11 @@ class PPONetwork(nn.Module):
 
         return action_logits, value
 
+
 # Реализация алгоритма PPO
 class PPOAgent:
-    def __init__(
-        self,
-        state_dim: int,
-        action_dims: List[int],
-    ):
-        self.device = torch.device(DEVICE if torch.cuda.is_available() else 'cpu')
+    def __init__(self):
+        self.device = torch.device(DEVICE if torch.cuda.is_available() else "cpu")
         self.gamma = GAMMA
         self.gae_lambda = GAE_LAMBDA
         self.clip_epsilon = CLIP_EPSILON
@@ -63,11 +65,10 @@ class PPOAgent:
         self.value_coef = VALUE_COEF
         self.max_grad_norm = MAX_GRAD_NORM
 
-        self.network: PPONetwork = PPONetwork(state_dim, action_dims).to(self.device)
-        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=LEARNING_RATE)
-
     # Выбор действия для заданного состояния
-    def get_action(self, state: np.ndarray) -> Tuple[np.ndarray, np.ndarray, torch.Tensor]:
+    def get_action(
+        self, state: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, torch.Tensor]:
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
@@ -87,14 +88,18 @@ class PPOAgent:
 
             total_log_prob = torch.stack(log_probs).sum()
 
-            return np.array(actions), total_log_prob.cpu().numpy(), value.squeeze().cpu().numpy()
+            return (
+                np.array(actions),
+                total_log_prob.cpu().numpy(),
+                value.squeeze().cpu().numpy(),
+            )
 
     def compute_advantages(
         self,
         rewards: List[float],
         values: List[float],
         dones: List[bool],
-        next_value: float
+        next_value: float,
     ) -> Tuple[np.ndarray, np.ndarray]:
         advantages = []
         returns = []
@@ -105,7 +110,9 @@ class PPOAgent:
         for t in reversed(range(len(rewards))):
             delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
             # Оценка обобщенного преимущества
-            advantage = delta + self.gamma * self.gae_lambda * advantage * (1 - dones[t])
+            advantage = delta + self.gamma * self.gae_lambda * advantage * (
+                1 - dones[t]
+            )
             advantages.insert(0, advantage)
 
             returns.insert(0, advantage + values[t])
@@ -126,7 +133,7 @@ class PPOAgent:
         advantages: np.ndarray,
         returns: np.ndarray,
         epochs: int,
-        batch_size: int
+        batch_size: int,
     ):
         states_tensor = torch.FloatTensor(states).to(self.device)
         actions_tensor = torch.LongTensor(actions).to(self.device)
@@ -139,7 +146,7 @@ class PPOAgent:
             actions_tensor,
             old_log_probs_tensor,
             advantages_tensor,
-            returns_tensor
+            returns_tensor,
         )
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
@@ -149,7 +156,13 @@ class PPOAgent:
 
         for _ in range(epochs):
             for batch in dataloader:
-                batch_states, batch_actions, batch_old_log_probs, batch_advantages, batch_returns = batch
+                (
+                    batch_states,
+                    batch_actions,
+                    batch_old_log_probs,
+                    batch_advantages,
+                    batch_returns,
+                ) = batch
 
                 action_logits, values = self.network(batch_states)
                 values = values.squeeze()
@@ -168,24 +181,34 @@ class PPOAgent:
                     new_log_probs.append(new_log_prob)
                     entropies.append(entropy)
 
-
-                new_log_probs = torch.stack(new_log_probs, dim=1).sum(dim=1) # Суммируем логарифмы вероятностей по компонентам действий
+                new_log_probs = torch.stack(new_log_probs, dim=1).sum(
+                    dim=1
+                )  # Суммируем логарифмы вероятностей по компонентам действий
                 entropy = torch.stack(entropies, dim=1).sum(dim=1).mean()
 
                 ratio = torch.exp(new_log_probs - batch_old_log_probs)
 
                 surr1 = ratio * batch_advantages
-                surr2 = torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * batch_advantages
+                surr2 = (
+                    torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon)
+                    * batch_advantages
+                )
                 policy_loss = -torch.min(surr1, surr2).mean()
 
                 value_loss = F.mse_loss(values, batch_returns)
 
                 # Общий loss и оптимизация
-                loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy
+                loss = (
+                    policy_loss
+                    + self.value_coef * value_loss
+                    - self.entropy_coef * entropy
+                )
                 self.optimizer.zero_grad()
                 loss.backward()
 
-                torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(
+                    self.network.parameters(), self.max_grad_norm
+                )
                 self.optimizer.step()
 
                 total_policy_loss += policy_loss.item()
@@ -199,3 +222,17 @@ class PPOAgent:
         avg_entropy = total_entropy / n_updates
 
         return avg_policy_loss, avg_value_loss, avg_entropy
+
+    def save(self, path: str):
+        torch.save(
+            {
+                "network_state_dict": self.network.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+            },
+            path,
+        )
+
+    def load(self, path: str):
+        checkpoint = torch.load(path, map_location=self.device)
+        self.network.load_state_dict(checkpoint["network_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
