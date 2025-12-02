@@ -6,29 +6,14 @@ import gymnasium as gym
 
 import numpy as np
 
-
-class FakeRewardCalculator:
-    def __init__(self):
-        pass
-
-    # TODO: добавить параметры для настройки функции наград
-    # максимальное увеличение высоты
-    # количество упавших блоков
-    # стабильность башни
-    # кучность блоков
-    # максимальная скорость блоков
-    def fill_physics(self):
-        pass
-
-    def calculate_reward(self) -> float:
-        pass
+from reward_calculator import FakeRewardCalculator
 
 
 class FakeEnvironment(gym.Env):
     def __init__(self):
         self._state_dim = 10
 
-        self.reward_calculator = FakeRewardCalculator
+        self.reward_calculator = FakeRewardCalculator()
 
     def get_state_dim(self) -> int:
         return self._state_dim
