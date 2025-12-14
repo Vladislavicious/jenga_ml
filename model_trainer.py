@@ -128,31 +128,40 @@ class JengaML_Trainer:
         print(f"\nОценка модели на {EVALUATION_STEP_COUNT} эпизодах...")
 
         for episode in range(EVALUATION_STEP_COUNT):
-            state, _ = self.model_environment.reset()
+            state = self.model_environment.reset()
             done = False
             truncated = False
             total_reward = 0
             max_height = 0
 
-            while not (done or truncated):
+            step_counter = 0
+
+            for _ in range(100000):
                 action, _, _ = self.agent.get_action(state)
                 state, reward, done, truncated, info = self.model_environment.step(
                     action
                 )
                 total_reward += reward
+                step_counter = step_counter + 1
+
+                if visualize and step_counter % 60 == 0:
+                    self.model_environment.render()
 
                 if "max_height" in info.keys():
                     max_height = max(max_height, info["max_height"])
                     print(f"Макс. высота = {max_height:.2f}")
 
-            episode_rewards.append(total_reward)
-            episode_lengths.append(max_height)
+                if done or truncated:
+                    break
+
+            self.episode_rewards.append(total_reward)
+            self.episode_lengths.append(max_height)
 
             print(f"Эпизод {episode + 1}: Награда = {total_reward:.2f}")
 
             print(
-                f"\nСредняя награда: {np.mean(episode_rewards):.2f} ± {np.std(episode_rewards):.2f}"
+                f"\nСредняя награда: {np.mean(self.episode_rewards):.2f} ± {np.std(self.episode_rewards):.2f}"
             )
             print(
-                f"Средняя макс. высота: {np.mean(episode_lengths):.2f} ± {np.std(episode_lengths):.2f}"
+                f"Средняя макс. высота: {np.mean(self.episode_lengths):.2f} ± {np.std(self.episode_lengths):.2f}"
             )
