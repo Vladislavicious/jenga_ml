@@ -2,6 +2,7 @@ import os
 from typing import Dict, List
 
 import numpy as np
+from tqdm import tqdm
 from environment import FakeRewardCalculator
 import gymnasium as gym
 from ppo import PPOAgent
@@ -38,7 +39,6 @@ class JengaML_Trainer:
         )
 
         self.episode_rewards = []
-        self.episode_lengths = []
         self.render = render
 
         if not os.path.exists(LOG_DIR):
@@ -52,6 +52,8 @@ class JengaML_Trainer:
         print(f"Начало обучения на {self.total_timesteps} шагов")
 
         timestep = 0
+
+        pbar = tqdm(total=self.total_timesteps)
 
         while timestep < self.total_timesteps:
             step_data = self.perform_train_step()
@@ -73,6 +75,21 @@ class JengaML_Trainer:
                 epochs=10,
                 batch_size=64,
             )
+
+            if len(self.episode_rewards) > 0:
+                avg_reward = np.mean(
+                    self.episode_rewards[-10:]
+                )  # Средняя за последние 10 эпизодов
+
+                # Обновление прогресс-бара
+                pbar.set_postfix(
+                    {
+                        "Avg Reward": f"{avg_reward:.2f}",
+                        "Policy Loss": f"{policy_loss:.4f}",
+                        "Value Loss": f"{value_loss:.4f}",
+                    }
+                )
+                pbar.update(len(step_data["states"]))
 
             # Сохранение модели
             if timestep % SAVE_FREQUENCY == 0:
@@ -97,7 +114,6 @@ class JengaML_Trainer:
 
         state = self.model_environment.reset()
         episode_reward = 0
-        episode_length = 0
 
         for _ in range(self.n_steps):
             action, log_prob, value = self.agent.get_action(state)
@@ -115,16 +131,13 @@ class JengaML_Trainer:
 
             state = next_state
             episode_reward += reward
-            episode_length += 1
 
             self.episode_rewards.append(episode_reward)
-            self.episode_lengths.append(episode_length)
 
             if done or truncated:
 
                 state = self.model_environment.reset()
                 episode_reward = 0
-                episode_length = 0
 
         _, _, last_action_value = self.agent.get_action(state)
 
@@ -172,13 +185,9 @@ class JengaML_Trainer:
                     break
 
             self.episode_rewards.append(total_reward)
-            self.episode_lengths.append(max_height)
 
             print(f"Эпизод {episode + 1}: Награда = {total_reward:.2f}")
 
             print(
                 f"\nСредняя награда: {np.mean(self.episode_rewards):.2f} ± {np.std(self.episode_rewards):.2f}"
-            )
-            print(
-                f"Средняя макс. высота: {np.mean(self.episode_lengths):.2f} ± {np.std(self.episode_lengths):.2f}"
             )

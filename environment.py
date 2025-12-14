@@ -30,9 +30,9 @@ class JengaEnv6DoF(gym.Env):
         self.n_blocks = n_blocks
 
         # Полуразмеры блока
-        self.half_x = 0.0375
-        self.half_y = 0.0125
-        self.half_z = 0.0075
+        self.half_x = 0.035
+        self.half_y = 0.010
+        self.half_z = 0.005
 
         # Генерация XML
         self.xml_path = self._generate_xml()
@@ -85,6 +85,8 @@ class JengaEnv6DoF(gym.Env):
           os.mkdir(XML_FOLDER)
 
         xml_path = os.path.join(XML_FOLDER, xml_name)
+        if os.path.exists(xml_path):
+            return xml_path
 
         header = f"""<mujoco model="jenga_generated">
   <compiler angle="degree"/>
@@ -140,10 +142,9 @@ class JengaEnv6DoF(gym.Env):
     def step(
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]:
-        self._apply_action(action)
 
-        # Выполняем несколько шагов физики
-        for _ in range(5):
+        for _ in range(20):
+            self._apply_action(action)
             mujoco.mj_step(self.model, self.data)
 
         state = self._get_current_state()
@@ -360,6 +361,9 @@ class ActionWrapper(gym.ActionWrapper):
         return self.simulation.get_action_dims()
 
 def make_jenga_env(n_blocks: int, render: bool) -> gym.ActionWrapper:
+    random.seed(123)
+    np.random.seed(123)
+
     env = JengaEnv6DoF(n_blocks=n_blocks)
     if render:
         env.render_mode = "human"
