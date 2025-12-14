@@ -1,3 +1,4 @@
+# jenga_env_6dof.py
 import os
 import random
 import time
@@ -101,7 +102,7 @@ class JengaEnv6DoF:
         xml_text = header + "".join(bodies) + footer
         with open(xml_path, "w", encoding="utf-8") as f:
             f.write(xml_text)
-        print(f">>> XML dсоздан: {xml_path}")
+        print(f">>> XML создан: {xml_path}")
         return xml_path
 
     # Получение состояния всех блоков
@@ -149,8 +150,6 @@ class JengaEnv6DoF:
         truncated = False
         return state, reward, terminated, truncated, {}
 
-
-
     def reset(self):
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
@@ -167,21 +166,54 @@ class JengaEnv6DoF:
             self.viewer.sync()
         self._render_counter += 1
 
+        time.sleep(0.03)
+
     def close(self):
         if self.viewer is not None:
             self.viewer.close()
             self.viewer = None
 
 if __name__ == "__main__":
-    env = JengaEnv6DoF(n_blocks=10, render_fps=1)
+    # Создаем окружение
+    env = JengaEnv6DoF(n_blocks=10, render_fps=10)  # render_fps=10 для плавной анимации
+
+    # Сбрасываем окружение
     state = env.reset()
-    print("Initial state (first 10 values):", state[:10])
 
-    MOVEMENT_RANGE = 0.01
+    # Выводим начальные позиции первого блока
+    print("=== Начальное состояние ===")
+    print(f"Позиция блока 0: x={state[0]:.4f}, y={state[1]:.4f}, z={state[2]:.4f}")
+    print(f"Ориентация блока 0: w={state[3]:.4f}, x={state[4]:.4f}, y={state[5]:.4f}, z={state[6]:.4f}")
 
-    for i in range(1, 10000):
-      action = np.random.uniform(-MOVEMENT_RANGE, MOVEMENT_RANGE, (env.n_blocks, 6))
-      next_state, reward, terminated, truncated, info = env.step(action)
-      print("curren state (first 10 values):", next_state[:10])
+    POS_TEST_STEPS = 100
+    ROT_TEST_STEPS = 1000
 
+    if POS_TEST_STEPS != 0:
+      print("\n=== Тест изменения позиции ===")
+      action_forward = np.zeros((10, 6), dtype=np.float32)
+      action_forward[:, 0] = 0.05  # fx = 0.05 Н (сила вправо)
+      action_forward[:, 1] = 0.05  # fx = 0.05 Н (сила вверх)
+
+      for step in range(POS_TEST_STEPS):
+          next_state, reward, terminated, truncated, info = env.step(action_forward)
+
+          if step % 10 == 0:
+              print(f"Шаг {step}: Позиция блока 0 - x={next_state[0]:.4f}, y={next_state[1]:.4f}, z={next_state[2]:.4f}")
+
+    if ROT_TEST_STEPS != 0:
+      print("\n=== Тест вращения блоков ===")
+
+      action_rotate = np.zeros((10, 6), dtype=np.float32)
+      action_rotate[:, 5] = 0.005  # tz = 0.005 Н·м (момент вокруг оси Z)
+
+      for step in range(ROT_TEST_STEPS):
+          next_state, reward, terminated, truncated, info = env.step(action_rotate)
+
+          # Выводим состояние каждые 10 шагов
+          if step % 10 == 0:
+              print(f"Шаг {step}: Позиция блока 0 - x={next_state[0]:.4f}, y={next_state[1]:.4f}, z={next_state[2]:.4f}")
+
+    print("\n=== Тест завершен ===")
+
+    # Закрываем окружение
     env.close()
