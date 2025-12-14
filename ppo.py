@@ -11,12 +11,12 @@ from torch.utils.data import DataLoader, TensorDataset
 
 # TODO: переместить в другое место
 LEARNING_RATE: float = 3e-4
-GAE_LAMBDA: float = (0.95,)
-GAMMA: float = (0.99,)
-CLIP_EPSILON: float = (0.2,)
-ENTROPY_COEF: float = (0.01,)
-VALUE_COEF: float = (0.5,)
-MAX_GRAD_NORM: float = (0.5,)
+GAE_LAMBDA: float = 0.95
+GAMMA: float = 0.99
+CLIP_EPSILON: float = 0.2
+ENTROPY_COEF: float = 0.01
+VALUE_COEF: float = 0.5
+MAX_GRAD_NORM: float = 0.5
 DEVICE: str = "cuda"
 
 

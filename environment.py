@@ -61,7 +61,8 @@ class JengaEnv6DoF(gym.Env):
         self.initial_heights = np.zeros(n_blocks)
 
     def get_state_dim(self) -> int:
-        return self.n_blocks
+        volume = 3 + 4 + 3 + 3 # how many variables in single "state" structure
+        return self.n_blocks * volume
 
     def get_action_dims(self) -> List[int]:
         return [
@@ -69,7 +70,10 @@ class JengaEnv6DoF(gym.Env):
             11,
             11,
             11,
-        ]  # 10 блоков, 11 значений каждой силы по каждой оси
+            11,
+            11,
+            11,
+        ]  # 10 блоков, 11 значений каждой силы и вращения по каждой оси
 
     def _generate_xml(self):
         rand_generated = random.randint(0, 1000000)
@@ -156,21 +160,18 @@ class JengaEnv6DoF(gym.Env):
         return state, reward, terminated, truncated, {}
 
     def _apply_action(self, action):
-        action = np.array(action).reshape(len(self.block_ids), 6)
-
         # Сбрасываем приложенные силы
         self.data.qfrc_applied[:] = 0
 
-        for i, body_id in enumerate(self.block_ids):
-            # Действие как сила/момент
-            fx, fy, fz, tx, ty, tz = action[i]
+        # Действие как сила/момент
+        index, fx, fy, fz, tx, ty, tz = action
 
-            # Получаем индекс DOF для этого тела
-            jnt_dof_adr = self.model.jnt_dofadr[self.model.body_jntadr[body_id]]
+        # Получаем индекс DOF для этого тела
+        jnt_dof_adr = self.model.jnt_dofadr[self.model.body_jntadr[index]]
 
-            # Применяем силу (первые 3 DOF) и момент (следующие 3 DOF)
-            self.data.qfrc_applied[jnt_dof_adr:jnt_dof_adr+3] = [fx, fy, fz]
-            self.data.qfrc_applied[jnt_dof_adr+3:jnt_dof_adr+6] = [tx, ty, tz]
+        # Применяем силу (первые 3 DOF) и момент (следующие 3 DOF)
+        self.data.qfrc_applied[jnt_dof_adr:jnt_dof_adr+3] = [fx, fy, fz]
+        self.data.qfrc_applied[jnt_dof_adr+3:jnt_dof_adr+6] = [tx, ty, tz]
 
     # cброс данных окружения (MuJoCo) - координаты каждого блока
     # еще не уверен по поводу размеров блоков и нужны ли они алгоритму обучения

@@ -31,6 +31,9 @@ class JengaML_Trainer:
             action_dims=action_dimensions,
         )
 
+        self.episode_rewards = []
+        self.episode_lengths = []
+
     def train(self):
         """Основной цикл обучения"""
         print(f"Начало обучения на {self.total_timesteps} шагов")
@@ -94,9 +97,10 @@ class JengaML_Trainer:
             episode_reward += reward
             episode_length += 1
 
+            self.episode_rewards.append(episode_reward)
+            self.episode_lengths.append(episode_length)
+
             if done or truncated:
-                self.episode_rewards.append(episode_reward)
-                self.episode_lengths.append(episode_length)
 
                 state = self.model_environment.reset()
                 episode_reward = 0
@@ -120,9 +124,6 @@ class JengaML_Trainer:
         """Оценка обученной модели"""
         print(f"\nОценка модели на {EVALUATION_STEP_COUNT} эпизодах...")
 
-        episode_rewards = []
-        episode_heights = []
-
         for episode in range(EVALUATION_STEP_COUNT):
             state, _ = self.model_environment.reset(None)
             done = False
@@ -142,7 +143,7 @@ class JengaML_Trainer:
                     print(f"Макс. высота = {max_height:.2f}")
 
             episode_rewards.append(total_reward)
-            episode_heights.append(max_height)
+            episode_lengths.append(max_height)
 
             print(f"Эпизод {episode + 1}: Награда = {total_reward:.2f}")
 
@@ -150,5 +151,5 @@ class JengaML_Trainer:
                 f"\nСредняя награда: {np.mean(episode_rewards):.2f} ± {np.std(episode_rewards):.2f}"
             )
             print(
-                f"Средняя макс. высота: {np.mean(episode_heights):.2f} ± {np.std(episode_heights):.2f}"
+                f"Средняя макс. высота: {np.mean(episode_lengths):.2f} ± {np.std(episode_lengths):.2f}"
             )
