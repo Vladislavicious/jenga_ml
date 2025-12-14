@@ -207,3 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 configurations/
+models/
+MJDATA.TXT
+MUJOCO_LOG.TXT

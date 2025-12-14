@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List
 
 import numpy as np
@@ -6,7 +7,10 @@ import gymnasium as gym
 from ppo import PPOAgent
 
 EVALUATION_STEP_COUNT: int = 5
+SAVE_FREQUENCY: int = 5000
 
+LOG_DIR: str = "models"
+FINAL_MODEL_PATH: str = os.path.join(LOG_DIR, "ppo_jenga_final.pt")
 
 class JengaML_Trainer:
     def __init__(
@@ -37,6 +41,12 @@ class JengaML_Trainer:
         self.episode_lengths = []
         self.render = render
 
+        if not os.path.exists(LOG_DIR):
+            os.mkdir(LOG_DIR)
+
+    def load_trained_model(self, model_filepath):
+        self.agent.load_network(model_filepath=model_filepath)
+
     def train(self):
         """Основной цикл обучения"""
         print(f"Начало обучения на {self.total_timesteps} шагов")
@@ -63,6 +73,13 @@ class JengaML_Trainer:
                 epochs=10,
                 batch_size=64,
             )
+
+            # Сохранение модели
+            if timestep % SAVE_FREQUENCY == 0:
+                self.agent.save_model(os.path.join(LOG_DIR, f"ppo_jenga_{timestep}.pt"))
+                print(f"\nМодель сохранена на шаге {timestep}")
+
+        self.agent.save_model(FINAL_MODEL_PATH)
 
         print(f"Всего эпизодов: {len(self.episode_rewards)}")
         print(
