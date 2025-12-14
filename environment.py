@@ -55,6 +55,11 @@ class JengaEnv6DoF(gym.Env):
 
         self.reward_calculator = FakeRewardCalculator()
 
+        # Храним предыдущее состояние для расчета изменений
+        self.prev_heights = np.zeros(n_blocks)
+        self.prev_state = None
+        self.initial_heights = np.zeros(n_blocks)
+
     def get_state_dim(self) -> int:
         return self.n_blocks
 
@@ -136,6 +141,14 @@ class JengaEnv6DoF(gym.Env):
 
         state = self._get_current_state()
 
+        # Если это первый шаг, сохраняем начальное состояние
+        if self.prev_state is None:
+            self.prev_state = state.copy()
+            self._update_heights_from_state(state, store_initial=True)
+        else:
+            self._update_heights_from_state(state, store_initial=False)
+            self.prev_state = state.copy()
+
         reward = self._calculate_reward(state)
 
         terminated = False
@@ -171,7 +184,18 @@ class JengaEnv6DoF(gym.Env):
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
-        return self._get_current_state()
+
+        state = self._get_current_state()
+
+        # Сбрасываем сохраненные состояния
+        self.prev_state = None
+        self.prev_heights = np.zeros(self.n_blocks)
+        self.initial_heights = np.zeros(self.n_blocks)
+
+        # Сохраняем начальные высоты
+        self._update_heights_from_state(state, store_initial=True)
+
+        return state
 
     # функция отображения, делает отображение по свойству render_mode (смотри gym.Env)
     # для простоты отрисовываем только один режим
@@ -209,12 +233,65 @@ class JengaEnv6DoF(gym.Env):
             self.viewer.close()
             self.viewer = None
 
+    def _update_heights_from_state(self, state: np.ndarray, store_initial: bool = False):
+        """Обновляет высоты блоков из текущего состояния"""
+        for i in range(self.n_blocks):
+            # Индекс z-координаты в массиве state
+            # Каждый блок имеет 13 значений: 3 позиции, 4 кватерниона, 3 линейные скорости, 3 угловые скорости
+            z_idx = i * 13 + 2  # 0:x, 1:y, 2:z
+
+            current_height = state[z_idx]
+
+            if store_initial:
+                # Сохраняем начальную высоту
+                self.initial_heights[i] = current_height
+
+            # Сохраняем предыдущую высоту для расчета изменений
+            self.prev_heights[i] = current_height
+
+    def _calculate_max_height_change(self, state: np.ndarray) -> float:
+        """Вычисляет максимальное изменение высоты всех блоков с начала эпизода"""
+        if self.prev_state is None:
+            return 0.0
+
+        max_change = 0.0
+        for i in range(self.n_blocks):
+            z_idx = i * 13 + 2
+            current_height = state[z_idx]
+            initial_height = self.initial_heights[i]
+            height_change = abs(current_height - initial_height)
+
+            if height_change > max_change:
+                max_change = height_change
+
+        return max_change
+
+    def _calculate_max_block_speed(self, state: np.ndarray) -> float:
+        """Вычисляет максимальную линейную скорость среди всех блоков"""
+        max_speed = 0.0
+
+        for i in range(self.n_blocks):
+            # Индекс начала линейных скоростей в массиве state для i-го блока
+            # Структура: 3 позиции + 4 кватерниона + 3 линейные скорости + 3 угловые скорости
+            vel_start_idx = i * 13 + 7  # Пропускаем 3 позиции и 4 кватерниона
+
+            lin_vel = state[vel_start_idx:vel_start_idx+3]
+            speed = np.linalg.norm(lin_vel)
+
+            if speed > max_speed:
+                max_speed = speed
+
+        return max_speed
+
     def _calculate_reward(self, state: np.ndarray) -> float:
+        max_height_change = self._calculate_max_height_change(state)
+        max_block_speed = self._calculate_max_block_speed(state)
+
         self.reward_calculator.fill_physics(
-            max_height_change=0,
-            fallen_blocks=0,
-            block_grouping=0,
-            max_block_speed=0)
+            max_height_change=max_height_change,
+            fallen_blocks=0,  # Пока оставляем 0
+            block_grouping=0,  # Пока оставляем 0
+            max_block_speed=max_block_speed)
 
         reward = self.reward_calculator.calculate_reward()
         return reward
