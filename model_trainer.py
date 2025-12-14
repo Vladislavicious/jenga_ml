@@ -1,21 +1,28 @@
+import os
 from typing import Dict, List
 
 import numpy as np
-from environment import FakeEnvironment, FakeRewardCalculator
+from tqdm import tqdm
+from environment import FakeRewardCalculator
+import gymnasium as gym
 from ppo import PPOAgent
 
 EVALUATION_STEP_COUNT: int = 5
+SAVE_FREQUENCY: int = 5000
 
+LOG_DIR: str = "models"
+FINAL_MODEL_PATH: str = os.path.join(LOG_DIR, "ppo_jenga_final.pt")
 
 class JengaML_Trainer:
     def __init__(
         self,
-        model_environment: FakeEnvironment,
+        model_environment: gym.ActionWrapper,
         blocks_count: int,
         total_timesteps: int,
         n_steps: int,
+        render: bool = True
     ):
-        self.model_environment: FakeEnvironment = model_environment
+        self.model_environment: gym.ActionWrapper = model_environment
         self.blocks_count = blocks_count
 
         # Параметры обучения
@@ -31,11 +38,22 @@ class JengaML_Trainer:
             action_dims=action_dimensions,
         )
 
+        self.episode_rewards = []
+        self.render = render
+
+        if not os.path.exists(LOG_DIR):
+            os.mkdir(LOG_DIR)
+
+    def load_trained_model(self, model_filepath):
+        self.agent.load_network(model_filepath=model_filepath)
+
     def train(self):
         """Основной цикл обучения"""
         print(f"Начало обучения на {self.total_timesteps} шагов")
 
         timestep = 0
+
+        pbar = tqdm(total=self.total_timesteps)
 
         while timestep < self.total_timesteps:
             step_data = self.perform_train_step()
@@ -58,6 +76,28 @@ class JengaML_Trainer:
                 batch_size=64,
             )
 
+            if len(self.episode_rewards) > 0:
+                avg_reward = np.mean(
+                    self.episode_rewards[-10:]
+                )  # Средняя за последние 10 эпизодов
+
+                # Обновление прогресс-бара
+                pbar.set_postfix(
+                    {
+                        "Avg Reward": f"{avg_reward:.2f}",
+                        "Policy Loss": f"{policy_loss:.4f}",
+                        "Value Loss": f"{value_loss:.4f}",
+                    }
+                )
+                pbar.update(len(step_data["states"]))
+
+            # Сохранение модели
+            if timestep % SAVE_FREQUENCY == 0:
+                self.agent.save_model(os.path.join(LOG_DIR, f"ppo_jenga_{timestep}.pt"))
+                print(f"\nМодель сохранена на шаге {timestep}")
+
+        self.agent.save_model(FINAL_MODEL_PATH)
+
         print(f"Всего эпизодов: {len(self.episode_rewards)}")
         print(
             f"Средняя награда за последние 10 эпизодов: {np.mean(self.episode_rewards[-10:]):.2f}"
@@ -72,9 +112,8 @@ class JengaML_Trainer:
         values = []
         log_probs = []
 
-        state = self.model_environment.reset(None)
+        state = self.model_environment.reset()
         episode_reward = 0
-        episode_length = 0
 
         for _ in range(self.n_steps):
             action, log_prob, value = self.agent.get_action(state)
@@ -92,15 +131,13 @@ class JengaML_Trainer:
 
             state = next_state
             episode_reward += reward
-            episode_length += 1
+
+            self.episode_rewards.append(episode_reward)
 
             if done or truncated:
-                self.episode_rewards.append(episode_reward)
-                self.episode_lengths.append(episode_length)
 
                 state = self.model_environment.reset()
                 episode_reward = 0
-                episode_length = 0
 
         _, _, last_action_value = self.agent.get_action(state)
 
@@ -120,35 +157,37 @@ class JengaML_Trainer:
         """Оценка обученной модели"""
         print(f"\nОценка модели на {EVALUATION_STEP_COUNT} эпизодах...")
 
-        episode_rewards = []
-        episode_heights = []
-
         for episode in range(EVALUATION_STEP_COUNT):
-            state, _ = self.model_environment.reset(None)
+            state = self.model_environment.reset()
             done = False
             truncated = False
             total_reward = 0
             max_height = 0
 
-            while not (done or truncated):
+            step_counter = 0
+
+            for _ in range(100000):
                 action, _, _ = self.agent.get_action(state)
                 state, reward, done, truncated, info = self.model_environment.step(
                     action
                 )
                 total_reward += reward
+                step_counter = step_counter + 1
+
+                if visualize and step_counter % 60 == 0:
+                    self.model_environment.render()
 
                 if "max_height" in info.keys():
                     max_height = max(max_height, info["max_height"])
                     print(f"Макс. высота = {max_height:.2f}")
 
-            episode_rewards.append(total_reward)
-            episode_heights.append(max_height)
+                if done or truncated:
+                    break
+
+            self.episode_rewards.append(total_reward)
 
             print(f"Эпизод {episode + 1}: Награда = {total_reward:.2f}")
 
             print(
-                f"\nСредняя награда: {np.mean(episode_rewards):.2f} ± {np.std(episode_rewards):.2f}"
-            )
-            print(
-                f"Средняя макс. высота: {np.mean(episode_heights):.2f} ± {np.std(episode_heights):.2f}"
+                f"\nСредняя награда: {np.mean(self.episode_rewards):.2f} ± {np.std(self.episode_rewards):.2f}"
             )
