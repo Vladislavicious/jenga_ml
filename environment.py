@@ -135,7 +135,9 @@ class JengaEnv6DoF(gym.Env):
             mujoco.mj_step(self.model, self.data)
 
         state = self._get_current_state()
-        reward = 0.0
+
+        reward = self._calculate_reward(state)
+
         terminated = False
         truncated = False
         return state, reward, terminated, truncated, {}
@@ -206,3 +208,13 @@ class JengaEnv6DoF(gym.Env):
         if self.viewer is not None:
             self.viewer.close()
             self.viewer = None
+
+    def _calculate_reward(self, state: np.ndarray) -> float:
+        self.reward_calculator.fill_physics(
+            max_height_change=0,
+            fallen_blocks=0,
+            block_grouping=0,
+            max_block_speed=0)
+
+        reward = self.reward_calculator.calculate_reward()
+        return reward
