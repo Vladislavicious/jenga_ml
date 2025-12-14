@@ -1,10 +1,13 @@
 # jenga_env_6dof.py
 import os
+import random
 import time
 import numpy as np
 import mujoco
 from mujoco import viewer
 from datetime import datetime
+
+XML_FOLDER = "configurations"
 
 def euler_to_quat(roll, pitch, yaw):
     cr = np.cos(roll / 2)
@@ -52,10 +55,12 @@ class JengaEnv6DoF:
         self._render_counter = 0
 
     def _generate_xml(self):
-        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        xml_name = f"jenga_{timestamp}.xml"
-        xml_path = os.path.join(desktop, xml_name)
+        rand_generated = random.randint(0, 1000000)
+        xml_name = f"jenga_{rand_generated}.xml"
+        if not os.path.exists(XML_FOLDER):
+          os.mkdir(XML_FOLDER)
+
+        xml_path = os.path.join(XML_FOLDER, xml_name)
 
         header = f"""<mujoco model="jenga_generated">
   <compiler angle="degree"/>
