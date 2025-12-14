@@ -1,6 +1,7 @@
 import os
 import random
 import time
+from gymnasium import spaces
 import numpy as np
 import mujoco
 import gymnasium as gym
@@ -60,9 +61,11 @@ class JengaEnv6DoF(gym.Env):
         self.prev_state = None
         self.initial_heights = np.zeros(n_blocks)
 
+    def _get_state_volume(self) -> int:
+        return 3 + 4 + 3 + 3 # how many variables in single "state" structure
+
     def get_state_dim(self) -> int:
-        volume = 3 + 4 + 3 + 3 # how many variables in single "state" structure
-        return self.n_blocks * volume
+        return self.n_blocks * self._get_state_volume()
 
     def get_action_dims(self) -> List[int]:
         return [
@@ -164,7 +167,9 @@ class JengaEnv6DoF(gym.Env):
         self.data.qfrc_applied[:] = 0
 
         # Действие как сила/момент
-        index, fx, fy, fz, tx, ty, tz = action
+        index = action["block"]
+        fx, fy, fz = action["force"]
+        tx, ty, tz = action["angular"]
 
         # Получаем индекс DOF для этого тела
         jnt_dof_adr = self.model.jnt_dofadr[self.model.body_jntadr[index]]
@@ -238,8 +243,7 @@ class JengaEnv6DoF(gym.Env):
         """Обновляет высоты блоков из текущего состояния"""
         for i in range(self.n_blocks):
             # Индекс z-координаты в массиве state
-            # Каждый блок имеет 13 значений: 3 позиции, 4 кватерниона, 3 линейные скорости, 3 угловые скорости
-            z_idx = i * 13 + 2  # 0:x, 1:y, 2:z
+            z_idx = i * self._get_state_volume() + 2  # 0:x, 1:y, 2:z
 
             current_height = state[z_idx]
 
@@ -257,7 +261,7 @@ class JengaEnv6DoF(gym.Env):
 
         max_change = 0.0
         for i in range(self.n_blocks):
-            z_idx = i * 13 + 2
+            z_idx = i * self._get_state_volume() + 2
             current_height = state[z_idx]
             initial_height = self.initial_heights[i]
             height_change = abs(current_height - initial_height)
@@ -274,7 +278,7 @@ class JengaEnv6DoF(gym.Env):
         for i in range(self.n_blocks):
             # Индекс начала линейных скоростей в массиве state для i-го блока
             # Структура: 3 позиции + 4 кватерниона + 3 линейные скорости + 3 угловые скорости
-            vel_start_idx = i * 13 + 7  # Пропускаем 3 позиции и 4 кватерниона
+            vel_start_idx = i * self._get_state_volume() + 7  # Пропускаем 3 позиции и 4 кватерниона
 
             lin_vel = state[vel_start_idx:vel_start_idx+3]
             speed = np.linalg.norm(lin_vel)
@@ -296,3 +300,68 @@ class JengaEnv6DoF(gym.Env):
 
         reward = self.reward_calculator.calculate_reward()
         return reward
+
+
+class ActionWrapper(gym.ActionWrapper):
+    """
+    Обертка для преобразования Dict action space в MultiDiscrete
+    для совместимости со Stable-Baselines3
+    """
+
+    def __init__(self, env: JengaEnv6DoF):
+        super().__init__(env)
+
+        MOVEMENT_CONSTRAINT = 0.01
+        ROTATION_CONSTRAINT = 0.001
+
+        self.n_force_bins = 11
+        self.force_bins = np.linspace(-MOVEMENT_CONSTRAINT, MOVEMENT_CONSTRAINT, self.n_force_bins)
+        self.ang_bins = np.linspace(-ROTATION_CONSTRAINT, ROTATION_CONSTRAINT, self.n_force_bins)
+
+        self.simulation = env
+
+        # Пространство действий: [block_index, force_x_discrete, force_y_discrete, force_z_discrete]
+        self.action_space = spaces.MultiDiscrete(
+            [
+                env.n_blocks,  # индекс блока
+                self.n_force_bins,  # сила по X
+                self.n_force_bins,  # сила по Y
+                self.n_force_bins,  # сила по Z
+                self.n_force_bins,  # вращение по X
+                self.n_force_bins,  # вращение по Y
+                self.n_force_bins,  # вращение по Z
+            ]
+        )
+
+    def action(self, action):
+        """Преобразование MultiDiscrete в Dict"""
+        block_idx = action[0]
+
+        # Преобразуем дискретные значения в непрерывные силы
+        force_x = self.force_bins[action[1]]
+        force_y = self.force_bins[action[2]]
+        force_z = self.force_bins[action[3]]
+        ang_x = self.ang_bins[action[4]]
+        ang_y = self.ang_bins[action[5]]
+        ang_z = self.ang_bins[action[6]]
+
+        # self.simulation.render()
+
+        return {
+            "block": block_idx,
+            "force": np.array([force_x, force_y, force_z], dtype=np.float32),
+            "angular": np.array([ang_x, ang_y, ang_z], dtype=np.float32),
+        }
+
+    def get_state_dim(self) -> int:
+        return self.simulation.get_state_dim()
+
+    def get_action_dims(self) -> List[int]:
+        return self.simulation.get_action_dims()
+
+def make_jenga_env(n_blocks: int, render: bool) -> gym.ActionWrapper:
+    env = JengaEnv6DoF(n_blocks=n_blocks)
+    if render:
+        env.render_mode = "human"
+    env = ActionWrapper(env)
+    return env

@@ -1,7 +1,8 @@
 from typing import Dict, List
 
 import numpy as np
-from environment import JengaEnv6DoF, FakeRewardCalculator
+from environment import FakeRewardCalculator
+import gymnasium as gym
 from ppo import PPOAgent
 
 EVALUATION_STEP_COUNT: int = 5
@@ -10,12 +11,13 @@ EVALUATION_STEP_COUNT: int = 5
 class JengaML_Trainer:
     def __init__(
         self,
-        model_environment: JengaEnv6DoF,
+        model_environment: gym.ActionWrapper,
         blocks_count: int,
         total_timesteps: int,
         n_steps: int,
+        render: bool = True
     ):
-        self.model_environment: JengaEnv6DoF = model_environment
+        self.model_environment: gym.ActionWrapper = model_environment
         self.blocks_count = blocks_count
 
         # Параметры обучения
@@ -33,6 +35,7 @@ class JengaML_Trainer:
 
         self.episode_rewards = []
         self.episode_lengths = []
+        self.render = render
 
     def train(self):
         """Основной цикл обучения"""
@@ -75,7 +78,7 @@ class JengaML_Trainer:
         values = []
         log_probs = []
 
-        state = self.model_environment.reset(None)
+        state = self.model_environment.reset()
         episode_reward = 0
         episode_length = 0
 
@@ -125,7 +128,7 @@ class JengaML_Trainer:
         print(f"\nОценка модели на {EVALUATION_STEP_COUNT} эпизодах...")
 
         for episode in range(EVALUATION_STEP_COUNT):
-            state, _ = self.model_environment.reset(None)
+            state, _ = self.model_environment.reset()
             done = False
             truncated = False
             total_reward = 0
