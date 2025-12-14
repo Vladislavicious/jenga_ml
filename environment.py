@@ -30,9 +30,9 @@ class JengaEnv6DoF(gym.Env):
         self.n_blocks = n_blocks
 
         # Полуразмеры блока
-        self.half_x = 0.035
-        self.half_y = 0.010
-        self.half_z = 0.005
+        self.half_z = 0.05
+        self.half_x = 6 * self.half_z
+        self.half_y = 2 * self.half_z
 
         # Генерация XML
         self.xml_path = self._generate_xml()
@@ -143,8 +143,16 @@ class JengaEnv6DoF(gym.Env):
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]:
 
-        for _ in range(20):
-            self._apply_action(action)
+        # Сбрасываем приложенные силы
+        self.data.qfrc_applied[:] = 0
+
+        # Увеличиваем количество шагов физики
+        NUM_PHYSICS_STEPS = 5  # было 5
+
+        for step_idx in range(NUM_PHYSICS_STEPS):
+            # Применяем действие с усилением
+            enhanced_action = self._enhance_action(action, step_idx, NUM_PHYSICS_STEPS)
+            self._apply_action(enhanced_action)
             mujoco.mj_step(self.model, self.data)
 
         state = self._get_current_state()
@@ -162,6 +170,12 @@ class JengaEnv6DoF(gym.Env):
         terminated = False
         truncated = False
         return state, reward, terminated, truncated, {}
+
+    def _enhance_action(self, action, step_idx, total_steps):
+        enhanced_action = action.copy()
+        enhanced_action["force"] /= total_steps
+        enhanced_action["angular"] /= total_steps
+        return enhanced_action
 
     def _apply_action(self, action):
         # Сбрасываем приложенные силы
@@ -312,10 +326,10 @@ class ActionWrapper(gym.ActionWrapper):
     def __init__(self, env: JengaEnv6DoF):
         super().__init__(env)
 
-        MOVEMENT_CONSTRAINT = 0.01
-        ROTATION_CONSTRAINT = 0.001
+        MOVEMENT_CONSTRAINT = 1
+        ROTATION_CONSTRAINT = 0.2
 
-        self.n_force_bins = 11
+        self.n_force_bins = 21
         self.force_bins = np.linspace(-MOVEMENT_CONSTRAINT, MOVEMENT_CONSTRAINT, self.n_force_bins)
         self.ang_bins = np.linspace(-ROTATION_CONSTRAINT, ROTATION_CONSTRAINT, self.n_force_bins)
 
