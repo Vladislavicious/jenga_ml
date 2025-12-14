@@ -146,11 +146,13 @@ class JengaEnv6DoF:
     def _render_frame(self):
         if self.render_fps == 0:
             return
+
         if self.viewer is None:
-            self.viewer = viewer.launch(self.model, self.data)
-        self._render_counter += 1
-        if self._render_counter % max(1, 60 // self.render_fps) == 0:
+            self.viewer = viewer.launch_passive(self.model, self.data)
+
+        if self._render_counter % self.render_fps == 0:
             self.viewer.sync()
+        self._render_counter += 1
 
     def close(self):
         if self.viewer is not None:
@@ -162,8 +164,9 @@ if __name__ == "__main__":
     state = env.reset()
     print("Initial state (first 10 values):", state[:10])
 
-    action = np.random.uniform(-0.01, 0.01, (env.n_blocks, 6))
-    next_state, reward, terminated, truncated, info = env.step(action)
-    print("Next state (first 10 values):", next_state[:10])
+    for i in range(1, 100000):
+      action = np.random.uniform(-0.1, 0.1, (env.n_blocks, 6))
+      next_state, reward, terminated, truncated, info = env.step(action)
+      print("curren state (first 10 values):", next_state[:10])
 
     env.close()
