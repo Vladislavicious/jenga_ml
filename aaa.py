@@ -1,11 +1,9 @@
-# jenga_env_6dof.py
 import os
 import random
 import time
 import numpy as np
 import mujoco
 from mujoco import viewer
-from datetime import datetime
 
 XML_FOLDER = "configurations"
 
@@ -122,21 +120,36 @@ class JengaEnv6DoF:
 
     def apply_action(self, action):
         action = np.array(action).reshape(len(self.block_ids), 6)
+
+        # Сбрасываем приложенные силы
+        self.data.qfrc_applied[:] = 0
+
         for i, body_id in enumerate(self.block_ids):
-            dx, dy, dz, roll, pitch, yaw = action[i]
-            self.data.xpos[body_id] += np.array([dx, dy, dz])
-            self.data.xquat[body_id] = euler_to_quat(roll, pitch, yaw)
+            # Действие как сила/момент
+            fx, fy, fz, tx, ty, tz = action[i]
+
+            # Получаем индекс DOF для этого тела
+            jnt_dof_adr = self.model.jnt_dofadr[self.model.body_jntadr[body_id]]
+
+            # Применяем силу (первые 3 DOF) и момент (следующие 3 DOF)
+            self.data.qfrc_applied[jnt_dof_adr:jnt_dof_adr+3] = [fx, fy, fz]
+            self.data.qfrc_applied[jnt_dof_adr+3:jnt_dof_adr+6] = [tx, ty, tz]
 
     def step(self, action):
         self.apply_action(action)
+
+        # Выполняем несколько шагов физики
         for _ in range(5):
             mujoco.mj_step(self.model, self.data)
+
         self._render_frame()
         state = self.get_state()
         reward = 0.0
         terminated = False
         truncated = False
         return state, reward, terminated, truncated, {}
+
+
 
     def reset(self):
         mujoco.mj_resetData(self.model, self.data)
@@ -160,12 +173,14 @@ class JengaEnv6DoF:
             self.viewer = None
 
 if __name__ == "__main__":
-    env = JengaEnv6DoF(n_blocks=10, render_fps=10)
+    env = JengaEnv6DoF(n_blocks=10, render_fps=1)
     state = env.reset()
     print("Initial state (first 10 values):", state[:10])
 
-    for i in range(1, 100000):
-      action = np.random.uniform(-0.1, 0.1, (env.n_blocks, 6))
+    MOVEMENT_RANGE = 0.01
+
+    for i in range(1, 10000):
+      action = np.random.uniform(-MOVEMENT_RANGE, MOVEMENT_RANGE, (env.n_blocks, 6))
       next_state, reward, terminated, truncated, info = env.step(action)
       print("curren state (first 10 values):", next_state[:10])
 
