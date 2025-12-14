@@ -22,11 +22,9 @@ def euler_to_quat(roll, pitch, yaw):
     return np.array([w, x, y, z], dtype=np.float32)
 
 class JengaEnv6DoF:
-    def __init__(self, n_blocks=10, render_fps=10, seed=None):
+    def __init__(self, n_blocks=10, render_fps=10):
         self.n_blocks = n_blocks
         self.render_fps = render_fps
-        self.seed = seed if seed is not None else int(time.time()) % 2**32
-        np.random.seed(self.seed)
 
         # Полуразмеры блока
         self.half_x = 0.0375
@@ -174,6 +172,8 @@ class JengaEnv6DoF:
             self.viewer = None
 
 if __name__ == "__main__":
+    np.random.seed(123)
+
     # Создаем окружение
     env = JengaEnv6DoF(n_blocks=10, render_fps=10)  # render_fps=10 для плавной анимации
 
