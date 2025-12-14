@@ -1,7 +1,7 @@
 from typing import Dict, List
 
 import numpy as np
-from environment import FakeEnvironment, FakeRewardCalculator
+from environment import JengaEnv6DoF, FakeRewardCalculator
 from ppo import PPOAgent
 
 EVALUATION_STEP_COUNT: int = 5
@@ -10,12 +10,12 @@ EVALUATION_STEP_COUNT: int = 5
 class JengaML_Trainer:
     def __init__(
         self,
-        model_environment: FakeEnvironment,
+        model_environment: JengaEnv6DoF,
         blocks_count: int,
         total_timesteps: int,
         n_steps: int,
     ):
-        self.model_environment: FakeEnvironment = model_environment
+        self.model_environment: JengaEnv6DoF = model_environment
         self.blocks_count = blocks_count
 
         # Параметры обучения
