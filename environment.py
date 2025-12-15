@@ -30,9 +30,9 @@ class JengaEnv6DoF(gym.Env):
         self.n_blocks = n_blocks
 
         # Полуразмеры блока
-        self.half_z = 0.05
-        self.half_x = 6 * self.half_z
-        self.half_y = 2 * self.half_z
+        self.half_x = 0.0375
+        self.half_y = 0.0125
+        self.half_z = 0.0075
 
         # Генерация XML
         self.xml_path = self._generate_xml()
@@ -326,8 +326,8 @@ class ActionWrapper(gym.ActionWrapper):
     def __init__(self, env: JengaEnv6DoF):
         super().__init__(env)
 
-        MOVEMENT_CONSTRAINT = 1
-        ROTATION_CONSTRAINT = 0.2
+        MOVEMENT_CONSTRAINT = 0.1
+        ROTATION_CONSTRAINT = 0.02
 
         self.n_force_bins = 21
         self.force_bins = np.linspace(-MOVEMENT_CONSTRAINT, MOVEMENT_CONSTRAINT, self.n_force_bins)
@@ -375,9 +375,6 @@ class ActionWrapper(gym.ActionWrapper):
         return self.simulation.get_action_dims()
 
 def make_jenga_env(n_blocks: int, render: bool) -> gym.ActionWrapper:
-    random.seed(123)
-    np.random.seed(123)
-
     env = JengaEnv6DoF(n_blocks=n_blocks)
     if render:
         env.render_mode = "human"
