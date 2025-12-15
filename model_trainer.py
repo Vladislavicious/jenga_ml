@@ -165,6 +165,7 @@ class JengaML_Trainer:
         print(f"\nОценка модели на {EVALUATION_STEP_COUNT} эпизодах...")
 
         for episode in range(EVALUATION_STEP_COUNT):
+            self.make_new_env(True)
             state = self.model_environment.reset()
             done = False
             truncated = False
@@ -199,7 +200,7 @@ class JengaML_Trainer:
                 f"\nСредняя награда: {np.mean(self.episode_rewards):.2f} ± {np.std(self.episode_rewards):.2f}"
             )
 
-    def make_new_env(self):
+    def make_new_env(self, render: bool = False):
         print("\nПересоздаю окружение")
         self.model_environment.close()
-        self.model_environment = make_jenga_env(self.blocks_count, False)
+        self.model_environment = make_jenga_env(self.blocks_count, render=render)

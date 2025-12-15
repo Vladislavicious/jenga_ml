@@ -303,14 +303,37 @@ class JengaEnv6DoF(gym.Env):
 
         return max_speed
 
+    def _calculate_grouping_coef(self, state: np.ndarray) -> float:
+        distances = []
+
+        for i in range(self.n_blocks):
+            x_idx = i * self._get_state_volume()
+            y_idx = x_idx + 1
+
+            x_pos = state[x_idx]
+            y_pos = state[y_idx]
+
+            distance = np.sqrt(x_pos**2 + y_pos**2)
+            distances.append(distance)
+
+        mean_distance = np.mean(distances)
+
+        max_expected_distance = 3
+        normalized_distance = min(mean_distance / max_expected_distance, 1.0)
+
+        grouping_coef = 1.0 - normalized_distance
+
+        return max(0.0, min(1.0, grouping_coef))
+
     def _calculate_reward(self, state: np.ndarray) -> float:
         max_height_change = self._calculate_max_height_change(state)
         max_block_speed = self._calculate_max_block_speed(state)
+        block_grouping = self._calculate_grouping_coef(state)
 
         self.reward_calculator.fill_physics(
             max_height_change=max_height_change,
             fallen_blocks=0,  # Пока оставляем 0
-            block_grouping=0,  # Пока оставляем 0
+            block_grouping=block_grouping,
             max_block_speed=max_block_speed)
 
         reward = self.reward_calculator.calculate_reward()

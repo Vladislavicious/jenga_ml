@@ -1,6 +1,6 @@
 # TODO: вынести в файлы конфигурации
 HEIGHT_CHANGE_REWARD: float = 20.0
-BLOCK_GROUPING_REWARD: float = 0.5
+BLOCK_GROUPING_REWARD: float = 15.0
 
 FALLEN_BLOCKS_PENALTY: float = -2.0
 MAX_BLOCK_SPEED_PENALTY: float = -2.5
