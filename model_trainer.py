@@ -160,7 +160,7 @@ class JengaML_Trainer:
 
         return step_data
 
-    def evaluate(self, visualize: bool = False):
+    def evaluate(self, max_steps: int = 10000, visualize: bool = False):
         """Оценка обученной модели"""
         print(f"\nОценка модели на {EVALUATION_STEP_COUNT} эпизодах...")
 
@@ -174,7 +174,7 @@ class JengaML_Trainer:
 
             step_counter = 0
 
-            for _ in range(100000):
+            for _ in range(max_steps):
                 action, _, _ = self.agent.get_action(state)
                 state, reward, done, truncated, info = self.model_environment.step(
                     action

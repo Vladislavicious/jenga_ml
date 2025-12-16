@@ -23,6 +23,7 @@ BLOCK_LENGTH_Z = 0.015  # Высота блока (0.0075 * 2)
 MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Y
 NUM_STABILIZATION_STEPS = 10
 
+GIMBAL_LOCK_THRESHOLD = 1e-3
 
 def euler_to_quat(roll, pitch, yaw):
     rot = Rotation.from_euler('xyz', [roll, pitch, yaw])
@@ -251,8 +252,6 @@ class JengaEnv6DoF(gym.Env):
         new_pitch = current_pitch + desired_angles[1]
         new_yaw = current_yaw + desired_angles[2]
 
-        # Проверяем на gimbal lock (pitch близкий к ±π/2)
-        GIMBAL_LOCK_THRESHOLD = 1e-3
         if abs(abs(new_pitch) - np.pi/2) < GIMBAL_LOCK_THRESHOLD:
             print(f"Warning: Approaching gimbal lock. Pitch = {new_pitch}")
             # Можно немного сместить угол, чтобы избежать вырожденности

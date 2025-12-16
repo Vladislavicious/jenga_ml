@@ -11,12 +11,17 @@ n_blocks = 10
 random.seed(123)
 np.random.seed(123)
 env = make_jenga_env(n_blocks=n_blocks, render=True)
-trainer = JengaML_Trainer(env, blocks_count=n_blocks, total_timesteps=1000000, n_steps=100)
+
+step_count = 2500
+iterations = 2000
+total_steps = step_count * iterations
+
+trainer = JengaML_Trainer(env, blocks_count=n_blocks, total_timesteps=total_steps, n_steps=step_count)
 
 # %%
 env.reset()
 trainer.train()
 
-trainer.evaluate(True)
+trainer.evaluate(max_steps=step_count, visualize=True)
 
 # %%
