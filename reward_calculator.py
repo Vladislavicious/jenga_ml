@@ -1,7 +1,7 @@
 # TODO: вынести в файлы конфигурации
 HEIGHT_REWARD: float = 3.0
 BLOCK_GROUPING_REWARD: float = 5.0
-COLLISION_BLOCKS_REWARD: float = 10
+COLLISION_BLOCKS_REWARD: float = 10.0
 
 
 class FakeRewardCalculator:

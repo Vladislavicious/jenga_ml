@@ -331,12 +331,7 @@ class JengaEnv6DoF(gym.Env):
 
         mean_distance = np.mean(distances)
 
-        max_expected_distance = 3
-        normalized_distance = min(mean_distance / max_expected_distance, 1.0)
-
-        grouping_coef = 1.0 - normalized_distance
-
-        return max(0.0, min(1.0, grouping_coef))
+        return (BLOCK_LENGTH_X * 3) - mean_distance
 
     def _check_termination(self, state: np.ndarray) -> bool:
         # Проверяем, не упали ли блоки слишком низко
