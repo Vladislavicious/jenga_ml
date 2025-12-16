@@ -25,17 +25,10 @@ NUM_STABILIZATION_STEPS = 10
 
 
 def euler_to_quat(roll, pitch, yaw):
-    cr = np.cos(roll / 2)
-    sr = np.sin(roll / 2)
-    cp = np.cos(pitch / 2)
-    sp = np.sin(pitch / 2)
-    cy = np.cos(yaw / 2)
-    sy = np.sin(yaw / 2)
-    w = cr * cp * cy + sr * sp * sy
-    x = sr * cp * cy - cr * sp * sy
-    y = cr * sp * cy + sr * cp * sy
-    z = cr * cp * sy - sr * sp * cy
-    return np.array([w, x, y, z], dtype=np.float32)
+    rot = Rotation.from_euler('xyz', [roll, pitch, yaw])
+    quat = rot.as_quat()  # возвращает [x, y, z, w]
+
+    return np.array([quat[3], quat[0], quat[1], quat[2]], dtype=np.float32)
 
 def quat_to_euler(w, x, y, z):
     # Используем scipy для надежного преобразования
@@ -56,6 +49,7 @@ def are_blocks_touching(pos1: np.ndarray, ori1: np.ndarray, size1: np.ndarray,
 
     return True
 
+
 class JengaEnv6DoF(gym.Env):
     def __init__(self, n_blocks=10):
         self.n_blocks = n_blocks
@@ -64,7 +58,7 @@ class JengaEnv6DoF(gym.Env):
         self.half_x = BLOCK_LENGTH_X / 2
         self.half_y = BLOCK_LENGTH_Y / 2
         self.half_z = BLOCK_LENGTH_Z / 2
-        self.block_size = [BLOCK_LENGTH_X, BLOCK_LENGTH_Y, BLOCK_LENGTH_Z]
+        self.block_size = np.array([BLOCK_LENGTH_X, BLOCK_LENGTH_Y, BLOCK_LENGTH_Z])
 
         # Генерация XML
         self.xml_path = self._generate_xml()
@@ -162,6 +156,39 @@ class JengaEnv6DoF(gym.Env):
         print(f">>> XML создан: {xml_path}")
         return xml_path
 
+    def _compute_max_height(self) -> float:
+        max_height = -10000.0
+        for body_id in self.block_ids:
+            height = self.data.xpos[body_id][2]
+            if height > max_height:
+                max_height = height
+        return max_height
+
+    def _count_collisioned_blocks(self) -> int:
+        collisioned = set()
+
+        # Получаем позиции и ориентации всех блоков
+        block_positions = []
+        block_orientations = []
+
+        for body_id in self.block_ids:
+            pos = self.data.xpos[body_id].copy()
+            quat = self.data.xquat[body_id].copy()
+            block_positions.append(pos)
+            block_orientations.append(quat)
+
+        # Проверяем все пары блоков
+        for i in range(self.n_blocks):
+            for j in range(i + 1, self.n_blocks):
+                if are_blocks_touching(
+                    block_positions[i], block_orientations[i], self.block_size,
+                    block_positions[j], block_orientations[j], self.block_size
+                ):
+                    collisioned.add(i)
+                    collisioned.add(j)
+
+        return len(collisioned)
+
     def step(
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]:
@@ -178,6 +205,7 @@ class JengaEnv6DoF(gym.Env):
         # Получаем состояние после стабилизации
         state = self._get_current_state()
 
+        # Вычисляем награду
         reward = self._calculate_reward(state)
 
         terminated = self._check_termination(state)
@@ -198,21 +226,17 @@ class JengaEnv6DoF(gym.Env):
         current_quat = self.data.xquat[body_id].copy()
 
         # Преобразуем желаемое перемещение
-        # action["force"] теперь интерпретируем как относительное перемещение
-        # в диапазоне [-MAX_MOVEMENT_DISTANCE, MAX_MOVEMENT_DISTANCE]
         desired_displacement = action["force"]
 
         # Ограничиваем перемещение максимальной дистанцией
         displacement_norm = np.linalg.norm(desired_displacement)
         if displacement_norm > MAX_MOVEMENT_DISTANCE:
-            # Нормализуем и умножаем на максимальное расстояние
             desired_displacement = desired_displacement / displacement_norm * MAX_MOVEMENT_DISTANCE
 
         # Вычисляем новую позицию
         new_pos = current_pos + desired_displacement
 
         # Преобразуем углы поворота
-        # action["angular"] теперь интерпретируем как углы Эйлера
         current_roll, current_pitch, current_yaw = quat_to_euler(
             current_quat[0], current_quat[1], current_quat[2], current_quat[3]
         )
@@ -227,9 +251,19 @@ class JengaEnv6DoF(gym.Env):
         new_pitch = current_pitch + desired_angles[1]
         new_yaw = current_yaw + desired_angles[2]
 
+        # Проверяем на gimbal lock (pitch близкий к ±π/2)
+        GIMBAL_LOCK_THRESHOLD = 1e-3
+        if abs(abs(new_pitch) - np.pi/2) < GIMBAL_LOCK_THRESHOLD:
+            print(f"Warning: Approaching gimbal lock. Pitch = {new_pitch}")
+            # Можно немного сместить угол, чтобы избежать вырожденности
+            if new_pitch > 0:
+                new_pitch = np.pi/2 - GIMBAL_LOCK_THRESHOLD
+            else:
+                new_pitch = -np.pi/2 + GIMBAL_LOCK_THRESHOLD
+
         new_quat = euler_to_quat(new_roll, new_pitch, new_yaw)
 
-        # Телепортируем блок (изменяем qpos напрямую)
+        # Телепортируем блок
         jnt_qpos_adr = self.model.jnt_qposadr[self.model.body_jntadr[body_id]]
 
         # Устанавливаем новую позицию
@@ -238,7 +272,7 @@ class JengaEnv6DoF(gym.Env):
         # Устанавливаем новую ориентацию
         self.data.qpos[jnt_qpos_adr+3:jnt_qpos_adr+7] = new_quat
 
-        # Обнуляем скорости (чтобы избежать резких движений после телепортации)
+        # Обнуляем скорости
         jnt_dof_adr = self.model.jnt_dofadr[self.model.body_jntadr[body_id]]
         self.data.qvel[jnt_dof_adr:jnt_dof_adr+6] = 0
 
@@ -319,20 +353,10 @@ class JengaEnv6DoF(gym.Env):
         # Проверяем, не упали ли блоки слишком низко
         return False
 
-    def _compute_max_height(self, state: np.ndarray) -> float:
-        max_height = -1000000
-        for i in range(self.n_blocks):
-            z_idx = i * self._get_state_volume() + 2
-            z_pos = state[z_idx]
-            if z_pos > max_height:
-                max_height = z_pos
-
-        return max_height
-
     def _calculate_reward(self, state: np.ndarray) -> float:
         block_grouping = self._calculate_grouping_coef(state)
-        max_height = self._compute_max_height(state)
-        collisioned_blocks = 0
+        max_height = self._compute_max_height()
+        collisioned_blocks = self._count_collisioned_blocks()
 
         self.reward_calculator.fill_physics(
             max_height=max_height,
