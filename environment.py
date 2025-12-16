@@ -19,8 +19,10 @@ BLOCK_LENGTH_X = 0.075  # Длина блока (0.0375 * 2)
 BLOCK_LENGTH_Y = 0.025  # Ширина блока (0.0125 * 2)
 BLOCK_LENGTH_Z = 0.015  # Высота блока (0.0075 * 2)
 
-# Максимальное перемещение за один шаг (длина одного блока)
-MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Y  # Ограничение на перемещение
+# Максимальное перемещение за один шаг
+MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Y
+NUM_STABILIZATION_STEPS = 10
+
 
 def euler_to_quat(roll, pitch, yaw):
     cr = np.cos(roll / 2)
@@ -162,7 +164,6 @@ class JengaEnv6DoF(gym.Env):
         self._apply_teleportation(action)
 
         # Выполняем несколько шагов физики для стабилизации
-        NUM_STABILIZATION_STEPS = 3
         for _ in range(NUM_STABILIZATION_STEPS):
             mujoco.mj_step(self.model, self.data)
 
@@ -185,7 +186,6 @@ class JengaEnv6DoF(gym.Env):
         info = {
             "step": self.step_count,
             "max_height_change": self._calculate_max_height_change(state),
-            "max_block_speed": self._calculate_max_block_speed(state),
         }
 
         return state, reward, terminated, truncated, info
@@ -270,7 +270,6 @@ class JengaEnv6DoF(gym.Env):
     # функция отображения, делает отображение по свойству render_mode (смотри gym.Env)
     # для простоты отрисовываем только один режим
     def render(self):
-        """Визуализация среды"""
         if self.render_mode == "human":
             self._render_frame()
 
@@ -304,7 +303,6 @@ class JengaEnv6DoF(gym.Env):
             self.viewer = None
 
     def _update_heights_from_state(self, state: np.ndarray, store_initial: bool = False):
-        """Обновляет высоты блоков из текущего состояния"""
         for i in range(self.n_blocks):
             # Индекс z-координаты в массиве state
             z_idx = i * self._get_state_volume() + 2  # 0:x, 1:y, 2:z
@@ -319,7 +317,6 @@ class JengaEnv6DoF(gym.Env):
             self.prev_heights[i] = current_height
 
     def _calculate_max_height_change(self, state: np.ndarray) -> float:
-        """Вычисляет максимальное изменение высоты всех блоков с начала эпизода"""
         if self.prev_state is None:
             return 0.0
 
@@ -334,23 +331,6 @@ class JengaEnv6DoF(gym.Env):
                 max_change = height_change
 
         return max_change
-
-    def _calculate_max_block_speed(self, state: np.ndarray) -> float:
-        """Вычисляет максимальную линейную скорость среди всех блоков"""
-        max_speed = 0.0
-
-        for i in range(self.n_blocks):
-            # Индекс начала линейных скоростей в массиве state для i-го блока
-            # Структура: 3 позиции + 4 кватерниона + 3 линейные скорости + 3 угловые скорости
-            vel_start_idx = i * self._get_state_volume() + 7  # Пропускаем 3 позиции и 4 кватерниона
-
-            lin_vel = state[vel_start_idx:vel_start_idx+3]
-            speed = np.linalg.norm(lin_vel)
-
-            if speed > max_speed:
-                max_speed = speed
-
-        return max_speed
 
     def _calculate_grouping_coef(self, state: np.ndarray) -> float:
         distances = []
@@ -380,25 +360,18 @@ class JengaEnv6DoF(gym.Env):
 
     def _calculate_reward(self, state: np.ndarray) -> float:
         max_height_change = self._calculate_max_height_change(state)
-        max_block_speed = self._calculate_max_block_speed(state)
         block_grouping = self._calculate_grouping_coef(state)
 
         self.reward_calculator.fill_physics(
-            max_height_change=max_height_change,
-            fallen_blocks=0,  # Пока оставляем 0
+            max_height=max_height_change,
             block_grouping=block_grouping,
-            max_block_speed=max_block_speed)
+            collisioned_blocks=0)
 
         reward = self.reward_calculator.calculate_reward()
         return reward
 
 
 class ActionWrapper(gym.ActionWrapper):
-    """
-    Обертка для преобразования Dict action space в MultiDiscrete
-    для совместимости со Stable-Baselines3
-    """
-
     def __init__(self, env: JengaEnv6DoF):
         super().__init__(env)
 
@@ -447,7 +420,6 @@ class ActionWrapper(gym.ActionWrapper):
         )
 
     def action(self, action):
-        """Преобразование MultiDiscrete в Dict"""
         block_idx = action[0]
 
         # Преобразуем дискретные значения в непрерывные перемещения

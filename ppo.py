@@ -26,7 +26,7 @@ class PPONetwork(nn.Module):
         self,
         state_dim_count: int,
         action_dims_count: List[int],
-        hidden_dim_count: int = 128,
+        hidden_dim_count: int = 256,
     ):
         super().__init__()
 
