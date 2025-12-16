@@ -38,11 +38,23 @@ def euler_to_quat(roll, pitch, yaw):
     return np.array([w, x, y, z], dtype=np.float32)
 
 def quat_to_euler(w, x, y, z):
-    """Преобразование кватерниона в углы Эйлера (roll, pitch, yaw)"""
     # Используем scipy для надежного преобразования
     rot = Rotation.from_quat([x, y, z, w])
     euler = rot.as_euler('xyz', degrees=False)
     return euler[0], euler[1], euler[2]
+
+def are_blocks_touching(pos1: np.ndarray, ori1: np.ndarray, size1: np.ndarray,
+                        pos2: np.ndarray, ori2: np.ndarray, size2: np.ndarray,
+                        tolerance: float = 1e-3) -> bool:
+    half_size1 = size1 / 2.0
+    half_size2 = size2 / 2.0
+
+    # Проверка пересечения по каждой оси
+    for i in range(3):
+        if abs(pos1[i] - pos2[i]) > (half_size1[i] + half_size2[i] + tolerance):
+            return False
+
+    return True
 
 class JengaEnv6DoF(gym.Env):
     def __init__(self, n_blocks=10):
@@ -52,6 +64,7 @@ class JengaEnv6DoF(gym.Env):
         self.half_x = BLOCK_LENGTH_X / 2
         self.half_y = BLOCK_LENGTH_Y / 2
         self.half_z = BLOCK_LENGTH_Z / 2
+        self.block_size = [BLOCK_LENGTH_X, BLOCK_LENGTH_Y, BLOCK_LENGTH_Z]
 
         # Генерация XML
         self.xml_path = self._generate_xml()
@@ -306,13 +319,25 @@ class JengaEnv6DoF(gym.Env):
         # Проверяем, не упали ли блоки слишком низко
         return False
 
+    def _compute_max_height(self, state: np.ndarray) -> float:
+        max_height = -1000000
+        for i in range(self.n_blocks):
+            z_idx = i * self._get_state_volume() + 2
+            z_pos = state[z_idx]
+            if z_pos > max_height:
+                max_height = z_pos
+
+        return max_height
+
     def _calculate_reward(self, state: np.ndarray) -> float:
         block_grouping = self._calculate_grouping_coef(state)
+        max_height = self._compute_max_height(state)
+        collisioned_blocks = 0
 
         self.reward_calculator.fill_physics(
-            max_height=0,
+            max_height=max_height,
             block_grouping=block_grouping,
-            collisioned_blocks=0)
+            collisioned_blocks=collisioned_blocks)
 
         reward = self.reward_calculator.calculate_reward()
         return reward
