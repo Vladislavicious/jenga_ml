@@ -26,7 +26,7 @@ class PPONetwork(nn.Module):
         self,
         state_dim_count: int,
         action_dims_count: List[int],
-        hidden_dim_count: int = 2048,
+        hidden_dim_count: int = 512,
     ):
         super().__init__()
 
@@ -35,15 +35,23 @@ class PPONetwork(nn.Module):
 
         self.shared_features = nn.Sequential(
             nn.Linear(self.state_dim_count, hidden_dim_count),
-            nn.Tanh(),  # Функция активации
-            nn.Linear(hidden_dim_count, hidden_dim_count),
+            nn.LayerNorm(hidden_dim_count),  # Добавить LayerNorm
             nn.Tanh(),
+            nn.Dropout(0.1),  # Регуляризация
+            nn.Linear(hidden_dim_count, hidden_dim_count),
+            nn.LayerNorm(hidden_dim_count),
+            nn.Tanh(),
+            nn.Dropout(0.1),
         )
 
         self.actor_heads = nn.ModuleList(
             [nn.Linear(hidden_dim_count, dim) for dim in self.action_dims_count]
         )
-        self.critic_head = nn.Linear(hidden_dim_count, 1)
+        self.critic_head = nn.Sequential(
+            nn.Linear(hidden_dim_count, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1)
+        )
 
     def forward(self, state: torch.Tensor) -> Tuple[List[torch.Tensor], torch.Tensor]:
         features = self.shared_features(state)
@@ -110,28 +118,34 @@ class PPOAgent:
         dones: List[bool],
         next_value: float,
     ) -> Tuple[np.ndarray, np.ndarray]:
+        # Проблема: next_value используется неправильно
+        # В PPO нужно использовать value预估 следующего состояния
         advantages = []
         returns = []
 
         advantage = 0
-        next_value = next_value
+        next_value = next_value  # Это должно быть value следующего состояния
 
         for t in reversed(range(len(rewards))):
-            delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
-            # Оценка обобщенного преимущества
-            advantage = delta + self.gamma * self.gae_lambda * advantage * (
-                1 - dones[t]
-            )
-            advantages.insert(0, advantage)
+            # Исправленная формула:
+            if t == len(rewards) - 1:
+                next_value_est = next_value * (1 - dones[t])
+            else:
+                next_value_est = values[t + 1] * (1 - dones[t])
 
+            delta = rewards[t] + self.gamma * next_value_est - values[t]
+            advantage = delta + self.gamma * self.gae_lambda * advantage * (1 - dones[t])
+
+            advantages.insert(0, advantage)
             returns.insert(0, advantage + values[t])
-            next_value = values[t]
 
         advantages = np.array(advantages, dtype=np.float32)
         returns = np.array(returns, dtype=np.float32)
 
-        # Нормализация
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        # Нормализация advantages в пределах батча
+        if len(advantages) > 1:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
         return advantages, returns
 
     def update(
