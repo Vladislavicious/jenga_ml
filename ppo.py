@@ -86,7 +86,10 @@ class PPOAgent:
     def get_action(
         self, state: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, torch.Tensor]:
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+
+        if hasattr(self, 'state_mean'):
+            state_norm = (state - self.state_mean) / self.state_std
+        state_tensor = torch.FloatTensor(state_norm).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             action_logits, value = self.network(state_tensor)
@@ -118,8 +121,6 @@ class PPOAgent:
         dones: List[bool],
         next_value: float,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        # Проблема: next_value используется неправильно
-        # В PPO нужно использовать value预估 следующего состояния
         advantages = []
         returns = []
 
@@ -158,7 +159,19 @@ class PPOAgent:
         epochs: int,
         batch_size: int,
     ):
-        states_tensor = torch.FloatTensor(states).to(self.device)
+        actions = np.array(actions)  # [batch_size, n_actions]
+
+        if not hasattr(self, 'state_mean'):
+            self.state_mean = states.mean(axis=0)
+            self.state_std = states.std(axis=0) + 1e-8
+        else:
+            # Обновляем running statistics
+            self.state_mean = 0.99 * self.state_mean + 0.01 * states.mean(axis=0)
+            self.state_std = 0.99 * self.state_std + 0.01 * (states.std(axis=0) + 1e-8)
+
+        states_normalized = (states - self.state_mean) / self.state_std
+
+        states_tensor = torch.FloatTensor(states_normalized).to(self.device)
         actions_tensor = torch.LongTensor(actions).to(self.device)
         old_log_probs_tensor = torch.FloatTensor(old_log_probs).to(self.device)
         advantages_tensor = torch.FloatTensor(advantages).to(self.device)
