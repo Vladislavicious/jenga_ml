@@ -75,11 +75,6 @@ class JengaEnv6DoF(gym.Env):
 
         self.reward_calculator = FakeRewardCalculator()
 
-        # Храним предыдущее состояние для расчета изменений
-        self.prev_heights = np.zeros(n_blocks)
-        self.prev_state = None
-        self.initial_heights = np.zeros(n_blocks)
-
         # Для дебаггинга
         self.step_count = 0
 
@@ -170,14 +165,6 @@ class JengaEnv6DoF(gym.Env):
         # Получаем состояние после стабилизации
         state = self._get_current_state()
 
-        # Обновляем историю состояний
-        if self.prev_state is None:
-            self.prev_state = state.copy()
-            self._update_heights_from_state(state, store_initial=True)
-        else:
-            self._update_heights_from_state(state, store_initial=False)
-            self.prev_state = state.copy()
-
         reward = self._calculate_reward(state)
 
         terminated = self._check_termination(state)
@@ -185,7 +172,6 @@ class JengaEnv6DoF(gym.Env):
 
         info = {
             "step": self.step_count,
-            "max_height_change": self._calculate_max_height_change(state),
         }
 
         return state, reward, terminated, truncated, info
@@ -257,14 +243,6 @@ class JengaEnv6DoF(gym.Env):
 
         state = self._get_current_state()
 
-        # Сбрасываем сохраненные состояния
-        self.prev_state = None
-        self.prev_heights = np.zeros(self.n_blocks)
-        self.initial_heights = np.zeros(self.n_blocks)
-
-        # Сохраняем начальные высоты
-        self._update_heights_from_state(state, store_initial=True)
-
         return state
 
     # функция отображения, делает отображение по свойству render_mode (смотри gym.Env)
@@ -302,36 +280,6 @@ class JengaEnv6DoF(gym.Env):
             self.viewer.close()
             self.viewer = None
 
-    def _update_heights_from_state(self, state: np.ndarray, store_initial: bool = False):
-        for i in range(self.n_blocks):
-            # Индекс z-координаты в массиве state
-            z_idx = i * self._get_state_volume() + 2  # 0:x, 1:y, 2:z
-
-            current_height = state[z_idx]
-
-            if store_initial:
-                # Сохраняем начальную высоту
-                self.initial_heights[i] = current_height
-
-            # Сохраняем предыдущую высоту для расчета изменений
-            self.prev_heights[i] = current_height
-
-    def _calculate_max_height_change(self, state: np.ndarray) -> float:
-        if self.prev_state is None:
-            return 0.0
-
-        max_change = 0.0
-        for i in range(self.n_blocks):
-            z_idx = i * self._get_state_volume() + 2
-            current_height = state[z_idx]
-            initial_height = self.initial_heights[i]
-            height_change = abs(current_height - initial_height)
-
-            if height_change > max_change:
-                max_change = height_change
-
-        return max_change
-
     def _calculate_grouping_coef(self, state: np.ndarray) -> float:
         distances = []
 
@@ -359,11 +307,10 @@ class JengaEnv6DoF(gym.Env):
         return False
 
     def _calculate_reward(self, state: np.ndarray) -> float:
-        max_height_change = self._calculate_max_height_change(state)
         block_grouping = self._calculate_grouping_coef(state)
 
         self.reward_calculator.fill_physics(
-            max_height=max_height_change,
+            max_height=0,
             block_grouping=block_grouping,
             collisioned_blocks=0)
 
