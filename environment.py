@@ -50,7 +50,7 @@ def are_blocks_touching(pos1: np.ndarray, ori1: np.ndarray, size1: np.ndarray,
 
 
 class JengaEnv6DoF(gym.Env):
-    def __init__(self, n_blocks=10):
+    def __init__(self, n_blocks):
         self.n_blocks = n_blocks
 
         # Полуразмеры блока (используем для расчетов)
@@ -65,6 +65,8 @@ class JengaEnv6DoF(gym.Env):
         # Загрузка модели и данных
         self.model = mujoco.MjModel.from_xml_path(self.xml_path)
         self.data = mujoco.MjData(self.model)
+
+        assert(self.model.nbody == self.n_blocks + 1)
 
         # Получаем имена и ID блоков
         self.block_names = []
@@ -385,19 +387,6 @@ class ActionWrapper(gym.ActionWrapper):
         )
 
         self.simulation = env
-
-        # Пространство действий
-        self.action_space = spaces.MultiDiscrete(
-            [
-                env.n_blocks,          # индекс блока (0-9)
-                self.n_bins,           # перемещение по X
-                self.n_bins,           # перемещение по Y
-                self.n_bins,           # перемещение по Z
-                self.n_bins,           # вращение вокруг X
-                self.n_bins,           # вращение вокруг Y
-                self.n_bins,           # вращение вокруг Z
-            ]
-        )
 
     def action(self, action):
         block_idx = action[0]

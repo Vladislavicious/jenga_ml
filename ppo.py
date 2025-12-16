@@ -89,6 +89,9 @@ class PPOAgent:
 
         if hasattr(self, 'state_mean'):
             state_norm = (state - self.state_mean) / self.state_std
+        else:
+            state_norm = state
+
         state_tensor = torch.FloatTensor(state_norm).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
