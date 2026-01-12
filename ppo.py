@@ -19,7 +19,6 @@ VALUE_COEF: float = 0.5
 MAX_GRAD_NORM: float = 0.5
 DEVICE: str = "cuda"
 
-
 # Нейронная сеть для PPO
 class PPONetwork(nn.Module):
     def __init__(
@@ -65,6 +64,10 @@ class PPONetwork(nn.Module):
 # Реализация алгоритма PPO
 class PPOAgent:
     def __init__(self):
+        cuda_available = torch.cuda.is_available()
+        if not cuda_available:
+            print("CUDA NOT AVAILABLE")
+
         self.device = torch.device(DEVICE if torch.cuda.is_available() else "cpu")
         self.gamma = GAMMA
         self.gae_lambda = GAE_LAMBDA

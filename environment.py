@@ -4,7 +4,7 @@ import time
 from gymnasium import spaces
 import numpy as np
 
-import mujoco_warp as mujoco
+import mujoco
 
 import gymnasium as gym
 from mujoco import viewer
