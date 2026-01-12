@@ -3,12 +3,14 @@ from typing import Dict, List
 
 import numpy as np
 from tqdm import tqdm
-from environment import FakeRewardCalculator
+from environment import FakeRewardCalculator, make_jenga_env
 import gymnasium as gym
 from ppo import PPOAgent
 
 EVALUATION_STEP_COUNT: int = 5
+
 SAVE_FREQUENCY: int = 5000
+MODEL_CHANGE_FREQUENCY: int = 5
 
 LOG_DIR: str = "models"
 FINAL_MODEL_PATH: str = os.path.join(LOG_DIR, "ppo_jenga_final.pt")
@@ -55,9 +57,11 @@ class JengaML_Trainer:
 
         pbar = tqdm(total=self.total_timesteps)
 
+        step_count = 0
         while timestep < self.total_timesteps:
             step_data = self.perform_train_step()
             timestep += len(step_data["states"])
+            step_count += 1
 
             advantages, returns = self.agent.compute_advantages(
                 rewards=step_data["rewards"],
@@ -95,6 +99,9 @@ class JengaML_Trainer:
             if timestep % SAVE_FREQUENCY == 0:
                 self.agent.save_model(os.path.join(LOG_DIR, f"ppo_jenga_{timestep}.pt"))
                 print(f"\nМодель сохранена на шаге {timestep}")
+
+            if step_count % MODEL_CHANGE_FREQUENCY == 0:
+                self.make_new_env()
 
         self.agent.save_model(FINAL_MODEL_PATH)
 
@@ -153,11 +160,12 @@ class JengaML_Trainer:
 
         return step_data
 
-    def evaluate(self, visualize: bool = False):
+    def evaluate(self, max_steps: int = 10000, visualize: bool = False):
         """Оценка обученной модели"""
         print(f"\nОценка модели на {EVALUATION_STEP_COUNT} эпизодах...")
 
         for episode in range(EVALUATION_STEP_COUNT):
+            self.make_new_env(True)
             state = self.model_environment.reset()
             done = False
             truncated = False
@@ -166,7 +174,7 @@ class JengaML_Trainer:
 
             step_counter = 0
 
-            for _ in range(100000):
+            for _ in range(max_steps):
                 action, _, _ = self.agent.get_action(state)
                 state, reward, done, truncated, info = self.model_environment.step(
                     action
@@ -191,3 +199,8 @@ class JengaML_Trainer:
             print(
                 f"\nСредняя награда: {np.mean(self.episode_rewards):.2f} ± {np.std(self.episode_rewards):.2f}"
             )
+
+    def make_new_env(self, render: bool = False):
+        print("\nПересоздаю окружение")
+        self.model_environment.close()
+        self.model_environment = make_jenga_env(self.blocks_count, render=render)

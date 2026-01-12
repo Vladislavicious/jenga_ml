@@ -10,7 +10,7 @@ from torch.distributions import Categorical
 from torch.utils.data import DataLoader, TensorDataset
 
 # TODO: переместить в другое место
-LEARNING_RATE: float = 3e-4
+LEARNING_RATE: float = 1e-4
 GAE_LAMBDA: float = 0.95
 GAMMA: float = 0.99
 CLIP_EPSILON: float = 0.2
@@ -26,7 +26,7 @@ class PPONetwork(nn.Module):
         self,
         state_dim_count: int,
         action_dims_count: List[int],
-        hidden_dim_count: int = 256,
+        hidden_dim_count: int = 512,
     ):
         super().__init__()
 
@@ -35,15 +35,23 @@ class PPONetwork(nn.Module):
 
         self.shared_features = nn.Sequential(
             nn.Linear(self.state_dim_count, hidden_dim_count),
-            nn.Tanh(),  # Функция активации
-            nn.Linear(hidden_dim_count, hidden_dim_count),
+            nn.LayerNorm(hidden_dim_count),  # Добавить LayerNorm
             nn.Tanh(),
+            nn.Dropout(0.1),  # Регуляризация
+            nn.Linear(hidden_dim_count, hidden_dim_count),
+            nn.LayerNorm(hidden_dim_count),
+            nn.Tanh(),
+            nn.Dropout(0.1),
         )
 
         self.actor_heads = nn.ModuleList(
             [nn.Linear(hidden_dim_count, dim) for dim in self.action_dims_count]
         )
-        self.critic_head = nn.Linear(hidden_dim_count, 1)
+        self.critic_head = nn.Sequential(
+            nn.Linear(hidden_dim_count, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1)
+        )
 
     def forward(self, state: torch.Tensor) -> Tuple[List[torch.Tensor], torch.Tensor]:
         features = self.shared_features(state)
@@ -78,7 +86,13 @@ class PPOAgent:
     def get_action(
         self, state: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, torch.Tensor]:
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+
+        if hasattr(self, 'state_mean'):
+            state_norm = (state - self.state_mean) / self.state_std
+        else:
+            state_norm = state
+
+        state_tensor = torch.FloatTensor(state_norm).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             action_logits, value = self.network(state_tensor)
@@ -114,24 +128,28 @@ class PPOAgent:
         returns = []
 
         advantage = 0
-        next_value = next_value
+        next_value = next_value  # Это должно быть value следующего состояния
 
         for t in reversed(range(len(rewards))):
-            delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
-            # Оценка обобщенного преимущества
-            advantage = delta + self.gamma * self.gae_lambda * advantage * (
-                1 - dones[t]
-            )
-            advantages.insert(0, advantage)
+            # Исправленная формула:
+            if t == len(rewards) - 1:
+                next_value_est = next_value * (1 - dones[t])
+            else:
+                next_value_est = values[t + 1] * (1 - dones[t])
 
+            delta = rewards[t] + self.gamma * next_value_est - values[t]
+            advantage = delta + self.gamma * self.gae_lambda * advantage * (1 - dones[t])
+
+            advantages.insert(0, advantage)
             returns.insert(0, advantage + values[t])
-            next_value = values[t]
 
         advantages = np.array(advantages, dtype=np.float32)
         returns = np.array(returns, dtype=np.float32)
 
-        # Нормализация
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        # Нормализация advantages в пределах батча
+        if len(advantages) > 1:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
         return advantages, returns
 
     def update(
@@ -144,7 +162,19 @@ class PPOAgent:
         epochs: int,
         batch_size: int,
     ):
-        states_tensor = torch.FloatTensor(states).to(self.device)
+        actions = np.array(actions)  # [batch_size, n_actions]
+
+        if not hasattr(self, 'state_mean'):
+            self.state_mean = states.mean(axis=0)
+            self.state_std = states.std(axis=0) + 1e-8
+        else:
+            # Обновляем running statistics
+            self.state_mean = 0.99 * self.state_mean + 0.01 * states.mean(axis=0)
+            self.state_std = 0.99 * self.state_std + 0.01 * (states.std(axis=0) + 1e-8)
+
+        states_normalized = (states - self.state_mean) / self.state_std
+
+        states_tensor = torch.FloatTensor(states_normalized).to(self.device)
         actions_tensor = torch.LongTensor(actions).to(self.device)
         old_log_probs_tensor = torch.FloatTensor(old_log_probs).to(self.device)
         advantages_tensor = torch.FloatTensor(advantages).to(self.device)
