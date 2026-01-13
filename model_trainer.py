@@ -80,6 +80,8 @@ class JengaML_Trainer:
                 batch_size=64,
             )
 
+            self.agent.decay_clip_epsilon()
+
             if len(self.episode_rewards) > 0:
                 avg_reward = np.mean(
                     self.episode_rewards[-10:]

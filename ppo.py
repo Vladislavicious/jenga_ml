@@ -19,6 +19,32 @@ VALUE_COEF: float = 0.5
 MAX_GRAD_NORM: float = 0.5
 DEVICE: str = "cuda"
 
+
+class RunningNormalizer:
+    def __init__(self, shape, device):
+        self.mean = torch.zeros(shape, device=device)
+        self.var = torch.ones(shape, device=device)
+        self.count = 1e-4  # для численной стабильности
+
+    def update(self, x: torch.Tensor):
+        """x: [batch_size, *shape]"""
+        batch_mean = x.mean(dim=0)
+        batch_var = x.var(dim=0, unbiased=False)
+        batch_count = x.size(0)
+
+        delta = batch_mean - self.mean
+        tot_count = self.count + batch_count
+
+        self.mean += delta * batch_count / tot_count
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        M2 = m_a + m_b + delta**2 * self.count * batch_count / tot_count
+        self.var = M2 / tot_count
+        self.count = tot_count
+
+    def normalize(self, x: torch.Tensor) -> torch.Tensor:
+        return (x - self.mean) / (torch.sqrt(self.var) + 1e-8)
+
 # Нейронная сеть для PPO
 class PPONetwork(nn.Module):
     def __init__(
@@ -34,22 +60,18 @@ class PPONetwork(nn.Module):
 
         self.shared_features = nn.Sequential(
             nn.Linear(self.state_dim_count, hidden_dim_count),
-            nn.LayerNorm(hidden_dim_count),  # Добавить LayerNorm
-            nn.Tanh(),
-            nn.Dropout(0.1),  # Регуляризация
+            nn.LayerNorm(hidden_dim_count),
+            nn.ReLU(),
             nn.Linear(hidden_dim_count, hidden_dim_count),
             nn.LayerNorm(hidden_dim_count),
-            nn.Tanh(),
-            nn.Dropout(0.1),
+            nn.ReLU(),
         )
 
         self.actor_heads = nn.ModuleList(
             [nn.Linear(hidden_dim_count, dim) for dim in self.action_dims_count]
         )
         self.critic_head = nn.Sequential(
-            nn.Linear(hidden_dim_count, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1)
+            nn.Linear(hidden_dim_count, 512), nn.ReLU(), nn.Linear(512, 1)
         )
 
     def forward(self, state: torch.Tensor) -> Tuple[List[torch.Tensor], torch.Tensor]:
@@ -76,8 +98,11 @@ class PPOAgent:
         self.value_coef = VALUE_COEF
         self.max_grad_norm = MAX_GRAD_NORM
 
+        self.state_normalizer = None
+
     def initialize_network(self, state_dim: int, action_dims: List[int]):
         self.network: PPONetwork = PPONetwork(state_dim, action_dims).to(self.device)
+        # TODO: add self.network = torch.compile(self.network)
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=LEARNING_RATE)
 
     def load_network(self, model_filepath: str):
@@ -90,7 +115,7 @@ class PPOAgent:
         self, state: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, torch.Tensor]:
 
-        if hasattr(self, 'state_mean'):
+        if hasattr(self, "state_mean"):
             state_norm = (state - self.state_mean) / self.state_std
         else:
             state_norm = state
@@ -141,7 +166,9 @@ class PPOAgent:
                 next_value_est = values[t + 1] * (1 - dones[t])
 
             delta = rewards[t] + self.gamma * next_value_est - values[t]
-            advantage = delta + self.gamma * self.gae_lambda * advantage * (1 - dones[t])
+            advantage = delta + self.gamma * self.gae_lambda * advantage * (
+                1 - dones[t]
+            )
 
             advantages.insert(0, advantage)
             returns.insert(0, advantage + values[t])
@@ -155,6 +182,10 @@ class PPOAgent:
 
         return advantages, returns
 
+    def decay_clip_epsilon(self, decay_factor: float = 0.999):
+        self.clip_epsilon *= decay_factor
+        self.clip_epsilon = max(self.clip_epsilon, 0.05) # lower bound
+
     def update(
         self,
         states: np.ndarray,
@@ -167,17 +198,13 @@ class PPOAgent:
     ):
         actions = np.array(actions)  # [batch_size, n_actions]
 
-        if not hasattr(self, 'state_mean'):
-            self.state_mean = states.mean(axis=0)
-            self.state_std = states.std(axis=0) + 1e-8
-        else:
-            # Обновляем running statistics
-            self.state_mean = 0.99 * self.state_mean + 0.01 * states.mean(axis=0)
-            self.state_std = 0.99 * self.state_std + 0.01 * (states.std(axis=0) + 1e-8)
+        if self.state_normalizer is None:
+            self.state_normalizer = RunningNormalizer(states.shape[1], self.device)
 
-        states_normalized = (states - self.state_mean) / self.state_std
+        states_tensor = torch.FloatTensor(states).to(self.device)
+        self.state_normalizer.update(states_tensor)
+        states_tensor = self.state_normalizer.normalize(states_tensor)
 
-        states_tensor = torch.FloatTensor(states_normalized).to(self.device)
         actions_tensor = torch.LongTensor(actions).to(self.device)
         old_log_probs_tensor = torch.FloatTensor(old_log_probs).to(self.device)
         advantages_tensor = torch.FloatTensor(advantages).to(self.device)
