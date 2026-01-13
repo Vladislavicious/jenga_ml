@@ -3,7 +3,9 @@ import random
 import time
 from gymnasium import spaces
 import numpy as np
+
 import mujoco
+
 import gymnasium as gym
 from mujoco import viewer
 from typing import Any, Dict, List, SupportsFloat, Tuple
@@ -20,8 +22,10 @@ BLOCK_LENGTH_Y = 0.025  # Ширина блока (0.0125 * 2)
 BLOCK_LENGTH_Z = 0.015  # Высота блока (0.0075 * 2)
 
 # Максимальное перемещение за один шаг
-MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Y
-NUM_STABILIZATION_STEPS = 10
+MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Y / 2
+NUM_STABILIZATION_STEPS = 5
+
+BINS_COUNT = 21
 
 def euler_to_quat(roll, pitch, yaw):
     rot = Rotation.from_euler('xyz', [roll, pitch, yaw])
@@ -88,19 +92,20 @@ class JengaEnv6DoF(gym.Env):
 
     def _get_state_volume(self) -> int:
         return 3 + 4 + 3 + 3  # how many variables in single "state" structure
+        # pos, quat, block_positions ,block_orientations
 
     def get_state_dim(self) -> int:
         return self.n_blocks * self._get_state_volume()
 
     def get_action_dims(self) -> List[int]:
         return [
-            self.n_blocks,      # индекс блока
-            21,                 # перемещение по X (-1..1)
-            21,                 # перемещение по Y (-1..1)
-            21,                 # перемещение по Z (-1..1)
-            21,                 # поворот вокруг X (-pi/4..pi/4)
-            21,                 # поворот вокруг Y (-pi/4..pi/4)
-            21,                 # поворот вокруг Z (-pi/2..pi/2)
+            self.n_blocks,              # индекс блока
+            BINS_COUNT,                 # перемещение по X (-1..1)
+            BINS_COUNT,                 # перемещение по Y (-1..1)
+            BINS_COUNT,                 # перемещение по Z (-1..1)
+            BINS_COUNT,                 # поворот вокруг X (-pi/4..pi/4)
+            BINS_COUNT,                 # поворот вокруг Y (-pi/4..pi/4)
+            BINS_COUNT,                 # поворот вокруг Z (-pi/2..pi/2)
         ]
 
     def _generate_xml(self):
@@ -168,7 +173,6 @@ class JengaEnv6DoF(gym.Env):
     def _count_collisioned_blocks(self) -> int:
         collisioned = set()
 
-        # Получаем позиции и ориентации всех блоков
         block_positions = []
         block_orientations = []
 
@@ -178,7 +182,6 @@ class JengaEnv6DoF(gym.Env):
             block_positions.append(pos)
             block_orientations.append(quat)
 
-        # Проверяем все пары блоков
         for i in range(self.n_blocks):
             for j in range(i + 1, self.n_blocks):
                 if are_blocks_touching(
@@ -222,11 +225,9 @@ class JengaEnv6DoF(gym.Env):
         block_idx = action["block"]
         body_id = self.block_ids[block_idx]
 
-        # Получаем текущую позицию и ориентацию
         current_pos = self.data.xpos[body_id].copy()
         current_quat = self.data.xquat[body_id].copy()
 
-        # Преобразуем желаемое перемещение
         desired_displacement = action["force"]
 
         # Ограничиваем перемещение максимальной дистанцией
@@ -234,20 +235,16 @@ class JengaEnv6DoF(gym.Env):
         if displacement_norm > MAX_MOVEMENT_DISTANCE:
             desired_displacement = desired_displacement / displacement_norm * MAX_MOVEMENT_DISTANCE
 
-        # Вычисляем новую позицию
         new_pos = current_pos + desired_displacement
 
-        # Преобразуем углы поворота
         current_roll, current_pitch, current_yaw = quat_to_euler(
             current_quat[0], current_quat[1], current_quat[2], current_quat[3]
         )
 
-        # Ограничиваем углы поворота
         max_angle = np.pi / 4  # 45 градусов
         desired_angles = action["angular"]
         desired_angles = np.clip(desired_angles, -max_angle, max_angle)
 
-        # Вычисляем новую ориентацию
         new_roll = current_roll + desired_angles[0]
         new_pitch = current_pitch + desired_angles[1]
         new_yaw = current_yaw + desired_angles[2]
@@ -255,19 +252,13 @@ class JengaEnv6DoF(gym.Env):
         new_quat = euler_to_quat(new_roll, new_pitch, new_yaw)
 
         # Телепортируем блок
-        jnt_qpos_adr = self.model.jnt_qposadr[self.model.body_jntadr[body_id]]
+        jnt_qpos_index = self.model.jnt_qposadr[self.model.body_jntadr[body_id]]
+        self.data.qpos[jnt_qpos_index:jnt_qpos_index+3] = new_pos
+        self.data.qpos[jnt_qpos_index+3:jnt_qpos_index+7] = new_quat
 
-        # Устанавливаем новую позицию
-        self.data.qpos[jnt_qpos_adr:jnt_qpos_adr+3] = new_pos
-
-        # Устанавливаем новую ориентацию
-        self.data.qpos[jnt_qpos_adr+3:jnt_qpos_adr+7] = new_quat
-
-        # Обнуляем скорости
         jnt_dof_adr = self.model.jnt_dofadr[self.model.body_jntadr[body_id]]
         self.data.qvel[jnt_dof_adr:jnt_dof_adr+6] = 0
 
-        # Обновляем физику
         mujoco.mj_forward(self.model, self.data)
 
     def reset(
@@ -364,7 +355,7 @@ class ActionWrapper(gym.ActionWrapper):
         ROLL_PITCH_RANGE = np.pi / 4  # ±45 градусов
         YAW_RANGE = np.pi / 2  # ±90 градусов
 
-        self.n_bins = 21
+        self.n_bins = BINS_COUNT
 
         # Биннинг для перемещения
         self.displacement_bins = np.linspace(

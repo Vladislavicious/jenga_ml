@@ -6,14 +6,14 @@ import numpy as np
 import time
 
 # %%
-n_blocks = 10
+n_blocks = 6
 
 random.seed(123)
 np.random.seed(123)
 env = make_jenga_env(n_blocks=n_blocks, render=True)
 
 step_count = 1500
-iterations = 2300
+iterations = 1500
 total_steps = step_count * iterations
 
 trainer = JengaML_Trainer(env, blocks_count=n_blocks, total_timesteps=total_steps, n_steps=step_count)
