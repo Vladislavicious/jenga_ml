@@ -290,6 +290,12 @@ class PPOAgent:
         avg_value_loss = total_value_loss / n_updates
         avg_entropy = total_entropy / n_updates
 
+        # Обновляем entropy_coef, чтобы меньше застревать в локальных минимумах
+        if avg_entropy < 0.1:
+            self.entropy_coef = min(self.entropy_coef * 1.1, ENTROPY_COEF * 10)
+        else:
+            self.entropy_coef = max(self.entropy_coef * 0.99, ENTROPY_COEF / 10)
+
         return avg_policy_loss, avg_value_loss, avg_entropy
 
     def save_model(self, model_filepath: str):
