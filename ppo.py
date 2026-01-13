@@ -158,17 +158,17 @@ class PPOAgent:
         advantage = 0
         next_value = next_value  # Это должно быть value следующего состояния
 
+        # GAE realization from [Schulman et al., 2015]
         for t in reversed(range(len(rewards))):
-            # Исправленная формула:
             if t == len(rewards) - 1:
-                next_value_est = next_value * (1 - dones[t])
+                next_non_terminal = 1.0 - float(dones[t])
+                next_v = next_value
             else:
-                next_value_est = values[t + 1] * (1 - dones[t])
+                next_non_terminal = 1.0 - float(dones[t])
+                next_v = values[t + 1]
 
-            delta = rewards[t] + self.gamma * next_value_est - values[t]
-            advantage = delta + self.gamma * self.gae_lambda * advantage * (
-                1 - dones[t]
-            )
+            delta = rewards[t] + self.gamma * next_v * next_non_terminal - values[t]
+            advantage = delta + self.gamma * self.gae_lambda * next_non_terminal * advantage
 
             advantages.insert(0, advantage)
             returns.insert(0, advantage + values[t])
