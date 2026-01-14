@@ -10,7 +10,7 @@ from torch.distributions import Categorical
 from torch.utils.data import DataLoader, TensorDataset
 
 # TODO: переместить в другое место
-LEARNING_RATE: float = 1e-4
+LEARNING_RATE: float = 2e-4
 GAE_LAMBDA: float = 0.95
 GAMMA: float = 0.99
 CLIP_EPSILON: float = 0.2

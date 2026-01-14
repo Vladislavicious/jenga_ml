@@ -22,10 +22,10 @@ BLOCK_LENGTH_Y = 0.025  # Ширина блока (0.0125 * 2)
 BLOCK_LENGTH_Z = 0.015  # Высота блока (0.0075 * 2)
 
 # Максимальное перемещение за один шаг
-MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Y / 2
-NUM_STABILIZATION_STEPS = 2
+MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Z / 2
+NUM_STABILIZATION_STEPS = 1
 
-BINS_COUNT = 21
+BINS_COUNT = 11
 
 def euler_to_quat(roll, pitch, yaw):
     rot = Rotation.from_euler('xyz', [roll, pitch, yaw])
@@ -278,8 +278,7 @@ class ActionWrapper(gym.ActionWrapper):
         DISPLACEMENT_RANGE = 1.0  # от -1 до 1 относительно MAX_MOVEMENT_DISTANCE
 
         # Диапазоны для вращения (в радианах)
-        ROLL_PITCH_RANGE = np.pi / 4  # ±45 градусов
-        YAW_RANGE = np.pi / 2  # ±90 градусов
+        ANGLE_RANGE = np.pi / 2
 
         self.n_bins = BINS_COUNT
 
@@ -292,14 +291,14 @@ class ActionWrapper(gym.ActionWrapper):
 
         # Биннинг для вращения
         self.roll_pitch_bins = np.linspace(
-            -ROLL_PITCH_RANGE,
-            ROLL_PITCH_RANGE,
+            -ANGLE_RANGE,
+            ANGLE_RANGE,
             self.n_bins
         )
 
         self.yaw_bins = np.linspace(
-            -YAW_RANGE,
-            YAW_RANGE,
+            -ANGLE_RANGE,
+            ANGLE_RANGE,
             self.n_bins
         )
 
