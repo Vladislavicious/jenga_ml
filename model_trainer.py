@@ -9,7 +9,6 @@ from ppo import PPOAgent
 
 EVALUATION_STEP_COUNT: int = 5
 
-SAVE_FREQUENCY: int = 5000
 MODEL_CHANGE_FREQUENCY: int = 5
 
 LOG_DIR: str = "models"
@@ -97,7 +96,7 @@ class JengaML_Trainer:
                 pbar.update(len(step_data["states"]))
 
             # Сохранение модели
-            if timestep % SAVE_FREQUENCY == 0:
+            if timestep % int(0.05 * self.total_timesteps) == 0:
                 self.agent.save_model(os.path.join(LOG_DIR, f"ppo_jenga_{timestep}.pt"))
                 print(f"\nМодель сохранена на шаге {timestep}")
 
@@ -183,7 +182,7 @@ class JengaML_Trainer:
                 total_reward += reward
                 step_counter = step_counter + 1
 
-                if visualize and step_counter % 60 == 0:
+                if visualize:
                     self.model_environment.render()
 
                 if "max_height" in info.keys():

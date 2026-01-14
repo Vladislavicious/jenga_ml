@@ -74,8 +74,7 @@ class JengaEnv6DoF(gym.Env):
         self.step_count = 0
 
     def _get_state_volume(self) -> int:
-        return 3 + 4 + 3 + 3  # how many variables in single "state" structure
-        # pos, quat, block_positions ,block_orientations
+        return 3 + 4  # how many variables in single "state" structure
 
     def get_state_dim(self) -> int:
         return self.n_blocks * self._get_state_volume()
@@ -248,12 +247,8 @@ class JengaEnv6DoF(gym.Env):
         for body_id in self.block_ids:
             pos = self.data.xpos[body_id]
             quat = self.data.xquat[body_id]
-            lin_vel = self.data.cvel[body_id][:3]
-            ang_vel = self.data.cvel[body_id][3:]
             state.extend(pos)
             state.extend(quat)
-            state.extend(lin_vel)
-            state.extend(ang_vel)
         return np.array(state, dtype=np.float32)
 
     def close(self):
