@@ -25,7 +25,7 @@ class RewardCalculator:
 
         self.blocks: List[BlockData] = []
         self.current_block_index: int = -1
-        self.attraction_point: np.ndarray = np.array([0.0, 0.0, 0.0])
+        self.attraction_point: np.ndarray = np.array([0.0, 0.0, self.__block_height / 2])
         self.current_tower_height: float = 0.0
         self.placed_blocks: List[int] = []
 

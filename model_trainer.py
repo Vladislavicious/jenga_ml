@@ -9,8 +9,6 @@ from ppo import PPOAgent
 
 EVALUATION_STEP_COUNT: int = 5
 
-MODEL_CHANGE_FREQUENCY: int = 5
-
 LOG_DIR: str = "models"
 FINAL_MODEL_PATH: str = os.path.join(LOG_DIR, "ppo_jenga_final.pt")
 
@@ -100,8 +98,7 @@ class JengaML_Trainer:
                 self.agent.save_model(os.path.join(LOG_DIR, f"ppo_jenga_{timestep}.pt"))
                 print(f"\nМодель сохранена на шаге {timestep}")
 
-            if step_count % MODEL_CHANGE_FREQUENCY == 0:
-                self.make_new_env()
+            self.make_new_env()
 
         self.agent.save_model(FINAL_MODEL_PATH)
 
@@ -201,6 +198,5 @@ class JengaML_Trainer:
             )
 
     def make_new_env(self, render: bool = False):
-        print("\nПересоздаю окружение")
         self.model_environment.close()
         self.model_environment = make_jenga_env(self.blocks_count, render=render)

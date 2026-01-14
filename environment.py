@@ -141,7 +141,7 @@ class JengaEnv6DoF(gym.Env):
         xml_text = header + "".join(bodies) + footer
         with open(xml_path, "w", encoding="utf-8") as f:
             f.write(xml_text)
-        print(f">>> XML создан: {xml_path}")
+
         return xml_path
 
     def step(
