@@ -23,7 +23,7 @@ BLOCK_LENGTH_Z = 0.015  # Высота блока (0.0075 * 2)
 
 # Максимальное перемещение за один шаг
 MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Y / 2
-NUM_STABILIZATION_STEPS = 5
+NUM_STABILIZATION_STEPS = 2
 
 BINS_COUNT = 21
 
