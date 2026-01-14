@@ -12,8 +12,8 @@ random.seed(123)
 np.random.seed(123)
 env = make_jenga_env(n_blocks=n_blocks, render=True)
 
-step_count = 1500
-iterations = 1500
+step_count = 300
+iterations = 500
 total_steps = step_count * iterations
 
 trainer = JengaML_Trainer(env, blocks_count=n_blocks, total_timesteps=total_steps, n_steps=step_count)

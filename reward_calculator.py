@@ -27,10 +27,10 @@ class RewardCalculator:
         self.current_block_index: int = -1
         self.attraction_point: np.ndarray = np.array([0.0, 0.0, 0.0])
         self.current_tower_height: float = 0.0
-        self.placed_blocks: List[int] = []  # Индексы уже размещенных блоков
+        self.placed_blocks: List[int] = []
 
         self.ATTRACTION_THRESHOLD = 0.5 * self.__block_width
-        self.DISTANCE_COEFFICIENT = 10.0  # Коэффициент сближения
+        self.DISTANCE_COEFFICIENT = 100.0  # Коэффициент сближения
 
         self.is_initialized = False
         self.previous_attraction_point: Optional[np.ndarray] = None
@@ -44,7 +44,7 @@ class RewardCalculator:
                 block = BlockData(
                     initial_coords=np.array(coords),
                     current_coords=np.array(coords),
-                    previous_coords=np.array(coords)  # Начальные координаты
+                    previous_coords=np.array(coords)
                 )
                 self.blocks.append(block)
             self.is_initialized = True
@@ -123,6 +123,9 @@ class RewardCalculator:
 
     def get_current_block(self) -> BlockData:
         return self.blocks[self.current_block_index]
+
+    def get_placed_blocks(self) -> List[int]:
+        return self.placed_blocks
 
     def reset(self) -> None:
         """Сбрасывает состояние калькулятора."""

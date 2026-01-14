@@ -164,14 +164,14 @@ class JengaEnv6DoF(gym.Env):
         # Вычисляем награду
         reward = self._calculate_reward(state)
 
-        terminated = self._check_termination(state)
+        done = self._check_done()
         truncated = False
 
         info = {
             "step": self.step_count,
         }
 
-        return state, reward, terminated, truncated, info
+        return state, reward, done, truncated, info
 
     def _apply_teleportation(self, action):
         block_idx = action["block"]
@@ -261,9 +261,8 @@ class JengaEnv6DoF(gym.Env):
             self.viewer.close()
             self.viewer = None
 
-    def _check_termination(self, state: np.ndarray) -> bool:
-        # Проверяем, не упали ли блоки слишком низко
-        return False
+    def _check_done(self) -> bool:
+        return len(self.reward_calculator.get_placed_blocks()) == self.n_blocks
 
     def _calculate_reward(self, state: np.ndarray) -> float:
         block_positions = []

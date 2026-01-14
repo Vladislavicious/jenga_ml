@@ -84,15 +84,14 @@ class JengaML_Trainer:
 
             if len(self.episode_rewards) > 0:
                 avg_reward = np.mean(
-                    self.episode_rewards[-10:]
-                )  # Средняя за последние 10 эпизодов
+                    step_data["rewards"]
+                )
 
                 # Обновление прогресс-бара
                 pbar.set_postfix(
                     {
-                        "Avg Reward": f"{avg_reward:.2f}",
-                        "Policy Loss": f"{policy_loss:.4f}",
-                        "Value Loss": f"{value_loss:.4f}",
+                        "Avg Step Reward": f"{avg_reward:.2f}",
+                        "Entropy": f"{entropy:.3f}",
                     }
                 )
                 pbar.update(len(step_data["states"]))
