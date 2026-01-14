@@ -3,7 +3,7 @@ from typing import Dict, List
 
 import numpy as np
 from tqdm import tqdm
-from environment import FakeRewardCalculator, make_jenga_env
+from environment import make_jenga_env
 import gymnasium as gym
 from ppo import PPOAgent
 

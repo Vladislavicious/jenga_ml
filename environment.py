@@ -12,7 +12,7 @@ from typing import Any, Dict, List, SupportsFloat, Tuple
 import scipy
 from scipy.spatial.transform import Rotation
 
-from reward_calculator import FakeRewardCalculator
+from reward_calculator import RewardCalculator
 
 XML_FOLDER = "configurations"
 
@@ -39,40 +39,21 @@ def quat_to_euler(w, x, y, z):
     euler = rot.as_euler('xyz', degrees=False)
     return euler[0], euler[1], euler[2]
 
-def are_blocks_touching(pos1: np.ndarray, ori1: np.ndarray, size1: np.ndarray,
-                        pos2: np.ndarray, ori2: np.ndarray, size2: np.ndarray,
-                        tolerance: float = 1e-3) -> bool:
-    half_size1 = size1 / 2.0
-    half_size2 = size2 / 2.0
-
-    # Проверка пересечения по каждой оси
-    for i in range(3):
-        if abs(pos1[i] - pos2[i]) > (half_size1[i] + half_size2[i] + tolerance):
-            return False
-
-    return True
-
-
 class JengaEnv6DoF(gym.Env):
     def __init__(self, n_blocks):
         self.n_blocks = n_blocks
 
-        # Полуразмеры блока (используем для расчетов)
         self.half_x = BLOCK_LENGTH_X / 2
         self.half_y = BLOCK_LENGTH_Y / 2
         self.half_z = BLOCK_LENGTH_Z / 2
-        self.block_size = np.array([BLOCK_LENGTH_X, BLOCK_LENGTH_Y, BLOCK_LENGTH_Z])
 
-        # Генерация XML
         self.xml_path = self._generate_xml()
 
-        # Загрузка модели и данных
         self.model = mujoco.MjModel.from_xml_path(self.xml_path)
         self.data = mujoco.MjData(self.model)
 
         assert(self.model.nbody == self.n_blocks + 1)
 
-        # Получаем имена и ID блоков
         self.block_names = []
         for i in range(self.model.nbody):
             name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, i)
@@ -85,7 +66,9 @@ class JengaEnv6DoF(gym.Env):
         self.viewer = None
         self._render_counter = 0
 
-        self.reward_calculator = FakeRewardCalculator()
+        self.reward_calculator = RewardCalculator(block_length=BLOCK_LENGTH_X,
+                                                  block_width=BLOCK_LENGTH_Y,
+                                                  block_height=BLOCK_LENGTH_Z)
 
         # Для дебаггинга
         self.step_count = 0
@@ -161,37 +144,6 @@ class JengaEnv6DoF(gym.Env):
             f.write(xml_text)
         print(f">>> XML создан: {xml_path}")
         return xml_path
-
-    def _compute_max_height(self) -> float:
-        max_height = -10000.0
-        for body_id in self.block_ids:
-            height = self.data.xpos[body_id][2]
-            if height > max_height:
-                max_height = height
-        return max_height
-
-    def _count_collisioned_blocks(self) -> int:
-        collisioned = set()
-
-        block_positions = []
-        block_orientations = []
-
-        for body_id in self.block_ids:
-            pos = self.data.xpos[body_id].copy()
-            quat = self.data.xquat[body_id].copy()
-            block_positions.append(pos)
-            block_orientations.append(quat)
-
-        for i in range(self.n_blocks):
-            for j in range(i + 1, self.n_blocks):
-                if are_blocks_touching(
-                    block_positions[i], block_orientations[i], self.block_size,
-                    block_positions[j], block_orientations[j], self.block_size
-                ):
-                    collisioned.add(i)
-                    collisioned.add(j)
-
-        return len(collisioned)
 
     def step(
         self, action: np.ndarray
@@ -309,40 +261,20 @@ class JengaEnv6DoF(gym.Env):
             self.viewer.close()
             self.viewer = None
 
-    def _calculate_grouping_coef(self, state: np.ndarray) -> float:
-        distances = []
-
-        for i in range(self.n_blocks):
-            x_idx = i * self._get_state_volume()
-            y_idx = x_idx + 1
-
-            x_pos = state[x_idx]
-            y_pos = state[y_idx]
-
-            distance = np.sqrt(x_pos**2 + y_pos**2)
-            distances.append(distance)
-
-        mean_distance = np.mean(distances)
-
-        return (BLOCK_LENGTH_X * 3) - mean_distance
-
     def _check_termination(self, state: np.ndarray) -> bool:
         # Проверяем, не упали ли блоки слишком низко
         return False
 
     def _calculate_reward(self, state: np.ndarray) -> float:
-        block_grouping = self._calculate_grouping_coef(state)
-        max_height = self._compute_max_height()
-        collisioned_blocks = self._count_collisioned_blocks()
+        block_positions = []
 
-        self.reward_calculator.fill_physics(
-            max_height=max_height,
-            block_grouping=block_grouping,
-            collisioned_blocks=collisioned_blocks)
+        for body_id in self.block_ids:
+            pos = self.data.xpos[body_id].copy()
+            block_positions.append(pos)
 
+        self.reward_calculator.fill_physics(block_positions)
         reward = self.reward_calculator.calculate_reward()
         return reward
-
 
 class ActionWrapper(gym.ActionWrapper):
     def __init__(self, env: JengaEnv6DoF):
@@ -404,7 +336,6 @@ class ActionWrapper(gym.ActionWrapper):
 
     def get_action_dims(self) -> List[int]:
         return self.simulation.get_action_dims()
-
 
 def make_jenga_env(n_blocks: int, render: bool = False) -> gym.ActionWrapper:
     env = JengaEnv6DoF(n_blocks=n_blocks)
