@@ -192,7 +192,7 @@ class JengaEnv6DoF(gym.Env):
             current_quat[0], current_quat[1], current_quat[2], current_quat[3]
         )
 
-        max_angle = np.pi / 4  # 45 градусов
+        max_angle = np.pi / 2  # 45 градусов
         desired_angles = action["angular"]
         desired_angles = np.clip(desired_angles, -max_angle, max_angle)
 
@@ -220,6 +220,9 @@ class JengaEnv6DoF(gym.Env):
         self.step_count = 0
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
+
+        for _ in range(25):
+            mujoco.mj_step(self.model, self.data)
 
         state = self._get_current_state()
 
@@ -289,6 +292,12 @@ class ActionWrapper(gym.ActionWrapper):
             self.n_bins
         )
 
+        self.displacement_up_bins = np.linspace(
+            0,
+            DISPLACEMENT_RANGE,
+            self.n_bins
+        )
+
         # Биннинг для вращения
         self.roll_pitch_bins = np.linspace(
             -ANGLE_RANGE,
@@ -311,7 +320,7 @@ class ActionWrapper(gym.ActionWrapper):
         # Умножаем на MAX_MOVEMENT_DISTANCE для получения фактического перемещения
         displacement_x = self.displacement_bins[action[1]] * MAX_MOVEMENT_DISTANCE
         displacement_y = self.displacement_bins[action[2]] * MAX_MOVEMENT_DISTANCE
-        displacement_z = self.displacement_bins[action[3]] * MAX_MOVEMENT_DISTANCE
+        displacement_z = self.displacement_up_bins[action[3]] * MAX_MOVEMENT_DISTANCE
 
         # Углы поворота
         roll = self.roll_pitch_bins[action[4]]
