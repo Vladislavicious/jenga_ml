@@ -5,14 +5,12 @@ from dataclasses import dataclass
 
 @dataclass
 class BlockData:
-    """Класс для хранения данных о блоке"""
     initial_coords: np.ndarray
     current_coords: np.ndarray
     previous_coords: np.ndarray
     is_placed: bool = False
 
     def update_coords(self, new_coords: np.ndarray) -> None:
-        """Обновляет координаты, сохраняя предыдущие"""
         self.previous_coords = np.array(self.current_coords)
         self.current_coords = np.array(new_coords)
 
@@ -25,11 +23,11 @@ class RewardCalculator:
 
         self.blocks: List[BlockData] = []
         self.current_block_index: int = -1
-        self.attraction_point: np.ndarray = np.array([0.0, 0.0, 0.0])
+        self.attraction_point: np.ndarray = np.array([0.0, 0.0, self.__block_height / 2])
         self.current_tower_height: float = 0.0
         self.placed_blocks: List[int] = []
 
-        self.ATTRACTION_THRESHOLD = 0.25 * self.__block_width
+        self.ATTRACTION_THRESHOLD = 0.2 * self.__block_height
         self.DISTANCE_COEFFICIENT = 1000.0  # Коэффициент сближения
 
         self.is_initialized = False
@@ -128,10 +126,9 @@ class RewardCalculator:
         return self.placed_blocks
 
     def reset(self) -> None:
-        """Сбрасывает состояние калькулятора."""
         self.blocks.clear()
         self.current_block_index = -1
-        self.attraction_point = np.array([0.0, 0.0, 0.0])
+        self.attraction_point = np.array([0.0, 0.0, self.__block_height / 2])
         self.current_tower_height = 0.0
         self.placed_blocks.clear()
         self.is_initialized = False

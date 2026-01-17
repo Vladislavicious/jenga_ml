@@ -22,10 +22,10 @@ BLOCK_LENGTH_Y = 0.025  # Ширина блока (0.0125 * 2)
 BLOCK_LENGTH_Z = 0.015  # Высота блока (0.0075 * 2)
 
 # Максимальное перемещение за один шаг
-MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Z / 2
+MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Z / 3
 NUM_STABILIZATION_STEPS = 1
 
-BINS_COUNT = 11
+BINS_COUNT = 3
 
 def euler_to_quat(roll, pitch, yaw):
     rot = Rotation.from_euler('xyz', [roll, pitch, yaw])
@@ -110,7 +110,7 @@ class JengaEnv6DoF(gym.Env):
   <compiler angle="degree"/>
   <option gravity="0 0 -9.81" timestep="0.01"/>
   <worldbody>
-    <geom name="floor" type="plane" size="3 3 0.1" rgba="0.85 0.85 0.85 1"/>
+    <geom name="floor" type="plane" pos="0 0 -0.1" size="3 3 0.1" rgba="0.85 0.85 0.85 1"/>
 """
 
         bodies = []
@@ -119,7 +119,7 @@ class JengaEnv6DoF(gym.Env):
             # случайная позиция блока
             x = float(np.round(np.random.uniform(-0.4, 0.4), 4))
             y = float(np.round(np.random.uniform(-0.4, 0.4), 4))
-            z = float(np.round(np.random.uniform(0.02, 0.15), 4))  # чуть выше пола
+            z = float(np.round(np.random.uniform(self.half_x, self.half_x * 2), 4))  # чуть выше пола
 
             # случайный угол в радианах
             roll = float(np.round(np.random.uniform(-np.pi/4, np.pi/4), 4))
@@ -224,6 +224,7 @@ class JengaEnv6DoF(gym.Env):
         options: Dict[str, Any] | None = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)  # важно для gymnasium
+        self.reward_calculator.reset()
 
         self.step_count = 0
         mujoco.mj_resetData(self.model, self.data)
@@ -242,6 +243,16 @@ class JengaEnv6DoF(gym.Env):
             self._render_frame()
 
         return None
+
+    def debug_output(self):
+        block_positions = []
+
+        for body_id in self.block_ids:
+            pos = self.data.xpos[body_id].copy()
+            block_positions.append(pos)
+
+        for i, pos in enumerate(block_positions):
+            print(f"block {i}: {pos}")
 
     # вспомогательная функция для отображения текущего состояния
     def _render_frame(self):
@@ -312,7 +323,6 @@ class ActionWrapper(gym.ActionWrapper):
         }
 
     def reverse_action(self, action):
-        # Не требуется для обучения, но можно оставить пустым
         raise NotImplementedError
 
 
