@@ -24,18 +24,16 @@ class RewardCalculator:
         self.blocks: List[BlockData] = []
         self.current_block_index: int = -1
         self.attraction_point: np.ndarray = np.array([0.0, 0.0, self.__block_height / 2])
-        self.current_tower_height: float = 0.0
         self.placed_blocks: List[int] = []
 
-        self.ATTRACTION_THRESHOLD = 0.2 * self.__block_height
-        self.DISTANCE_COEFFICIENT = 1000.0  # Коэффициент сближения
+        # Порог для "захвата" блока (немного больше половины высоты блока)
+        self.ATTRACTION_THRESHOLD = 0.3 * self.__block_height
+
+        self.REWARD_SCALE = 1.0  # можно настраивать
 
         self.is_initialized = False
-        self.previous_attraction_point: Optional[np.ndarray] = None
 
     def fill_physics(self, block_coords: List[np.ndarray]) -> None:
-
-        self.previous_attraction_point = self.attraction_point.copy() if self.is_initialized else None
 
         if not self.is_initialized:
             for coords in block_coords:
@@ -46,7 +44,6 @@ class RewardCalculator:
                 )
                 self.blocks.append(block)
             self.is_initialized = True
-
             self._select_next_current_block()
         else:
             for i, (block, new_coords) in enumerate(zip(self.blocks, block_coords)):
@@ -55,31 +52,34 @@ class RewardCalculator:
     def calculate_reward(self) -> float:
         current_block = self.get_current_block()
 
-        previous_distance_to_TP = np.linalg.norm(
-            current_block.previous_coords - self.attraction_point
-        )
+        # Абсолютное расстояние до текущей Точки Притяжения
+        distance_to_tp = np.linalg.norm(current_block.current_coords - self.attraction_point)
 
-        current_distance_to_TP = np.linalg.norm(
-            current_block.current_coords - self.attraction_point
-        )
+        # Экспоненциальная награда: чем ближе — тем больше
+        # Используем exp(-k * d), чтобы избежать взрыва на d=0
+        # Но лучше — вознаграждать за малое расстояние: reward = exp(-distance / sigma)
+        sigma = self.ATTRACTION_THRESHOLD  # характерная ширина "зоны интереса"
+        proximity_reward = np.exp(-distance_to_tp / sigma)
 
-        distance_change = previous_distance_to_TP - current_distance_to_TP
+        if proximity_reward < 0.003:
+            proximity_reward = 0
 
-        reward = distance_change * self.DISTANCE_COEFFICIENT
-
+        placement_bonus = 0.0
         if self._should_select_next_attraction_point():
             self._select_next_attraction_point()
+            placement_bonus = 5.0 * self.REWARD_SCALE
+            print(f"block_{self.current_block_index} placed")
 
-        return reward
+        total_reward = self.REWARD_SCALE * proximity_reward + placement_bonus
+        return total_reward
 
     def _should_select_next_attraction_point(self) -> bool:
         current_block = self.get_current_block()
 
-        distance = np.linalg.norm(current_block.current_coords - self.attraction_point)
-
         if current_block.is_placed:
             return False
 
+        distance = np.linalg.norm(current_block.current_coords - self.attraction_point)
         return distance < self.ATTRACTION_THRESHOLD
 
     def _select_next_attraction_point(self):
@@ -87,18 +87,10 @@ class RewardCalculator:
         current_block.is_placed = True
         self.placed_blocks.append(self.current_block_index)
 
-        self.attraction_point = self._calculate_new_attraction_point()
-        self.current_tower_height += self.__block_height
+        self.attraction_point = current_block.current_coords.copy()
+        self.attraction_point[2] += self.__block_height
 
         self._select_next_current_block()
-
-    def _calculate_new_attraction_point(self) -> np.ndarray:
-        current_block = self.get_current_block()
-
-        new_attraction_point = current_block.current_coords.copy()
-        new_attraction_point[2] += self.__block_height
-
-        return new_attraction_point
 
     def _select_next_current_block(self) -> None:
         min_distance = float('inf')
@@ -115,7 +107,7 @@ class RewardCalculator:
                 closest_index = i
 
         if closest_index < 0:
-          print("bad current block selection")
+            return
 
         self.current_block_index = closest_index
 
@@ -129,7 +121,5 @@ class RewardCalculator:
         self.blocks.clear()
         self.current_block_index = -1
         self.attraction_point = np.array([0.0, 0.0, self.__block_height / 2])
-        self.current_tower_height = 0.0
         self.placed_blocks.clear()
         self.is_initialized = False
-        self.previous_attraction_point = None

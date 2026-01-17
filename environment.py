@@ -97,7 +97,9 @@ class JengaEnv6DoF(gym.Env):
         )
 
     def _generate_xml(self):
-        rand_generated = random.randint(0, 1000000)
+        # rand_generated = random.randint(0, 1000000)
+        rand_generated = 1
+
         xml_name = f"jenga_{rand_generated}.xml"
         if not os.path.exists(XML_FOLDER):
             os.mkdir(XML_FOLDER)
@@ -110,7 +112,7 @@ class JengaEnv6DoF(gym.Env):
   <compiler angle="degree"/>
   <option gravity="0 0 -9.81" timestep="0.01"/>
   <worldbody>
-    <geom name="floor" type="plane" pos="0 0 -0.1" size="3 3 0.1" rgba="0.85 0.85 0.85 1"/>
+    <geom name="floor" type="plane" size="3 3 0.1" rgba="0.85 0.85 0.85 1"/>
 """
 
         bodies = []
@@ -328,6 +330,8 @@ class ActionWrapper(gym.ActionWrapper):
 
 def make_jenga_env(n_blocks: int, render: bool = False) -> gym.Env:
     env = JengaEnv6DoF(n_blocks=n_blocks)
+    env.reset()
+
     if render:
         env.render_mode = "human"
     env = ActionWrapper(env, n_blocks)
