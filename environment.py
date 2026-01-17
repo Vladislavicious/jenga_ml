@@ -85,10 +85,8 @@ class JengaEnv6DoF(gym.Env):
                                                   block_width=BLOCK_LENGTH_Y,
                                                   block_height=BLOCK_LENGTH_Z)
 
-        # Для дебаггинга
         self.step_count = 0
 
-        # Observation: [x, y, z, qw, qx, qy, qz] * n_blocks
         obs_dim = jenga_get_state_dim(self.n_blocks)
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
@@ -116,7 +114,6 @@ class JengaEnv6DoF(gym.Env):
         bodies = []
 
         for i in range(self.n_blocks):
-            # случайная позиция блока
             x = float(np.round(np.random.uniform(-0.4, 0.4), 4))
             y = float(np.round(np.random.uniform(-0.4, 0.4), 4))
             z = float(np.round(np.random.uniform(self.half_x, self.half_x * 2), 4))  # чуть выше пола
@@ -152,18 +149,12 @@ class JengaEnv6DoF(gym.Env):
     ) -> Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]:
 
         self.step_count += 1
-
-        # Применяем телепортацию
         self._apply_teleportation(action)
 
-        # Выполняем несколько шагов физики для стабилизации
         for _ in range(NUM_STABILIZATION_STEPS):
             mujoco.mj_step(self.model, self.data)
 
-        # Получаем состояние после стабилизации
         state = self._get_current_state()
-
-        # Вычисляем награду
         reward = self._calculate_reward(state)
 
         done = self._check_done()
@@ -231,8 +222,6 @@ class JengaEnv6DoF(gym.Env):
         state = self._get_current_state()
         return state, {}  # gymnasium требует dict
 
-    # функция отображения, делает отображение по свойству render_mode (смотри gym.Env)
-    # для простоты отрисовываем только один режим
     def render(self):
         if self.render_mode == "human":
             self._render_frame()
@@ -246,10 +235,10 @@ class JengaEnv6DoF(gym.Env):
             pos = self.data.xpos[body_id].copy()
             block_positions.append(pos)
 
+        print("")
         for i, pos in enumerate(block_positions):
             print(f"block {i}: {pos}")
 
-    # вспомогательная функция для отображения текущего состояния
     def _render_frame(self):
         if self.viewer is None:
             self.viewer = viewer.launch_passive(self.model, self.data)
@@ -257,7 +246,6 @@ class JengaEnv6DoF(gym.Env):
         self.viewer.sync()
         self._render_counter += 1
 
-    # вспомогательная функция для получения текущего состоянияы
     def _get_current_state(self) -> np.ndarray:
         state = []
         for body_id in self.block_ids:
