@@ -186,9 +186,7 @@ class JengaEnv6DoF(gym.Env):
             current_quat[0], current_quat[1], current_quat[2], current_quat[3]
         )
 
-        max_angle = np.pi / 2
         desired_angles = action["angular"]
-        desired_angles = np.clip(desired_angles, -max_angle, max_angle)
 
         new_yaw = current_yaw + desired_angles[0]
 
@@ -280,12 +278,11 @@ class ActionWrapper(gym.ActionWrapper):
 
         self.n_bins = BINS_COUNT
         self.max_movement = MAX_MOVEMENT_DISTANCE
-        self.max_angle = np.pi / 2  # 90 градусов
+        self.max_angle = np.pi / 4  # 90 градусов
 
         self.action_space = spaces.MultiDiscrete(jenga_get_action_dims(n_blocks))
 
         self.disp_bins = np.linspace(-1.0, 1.0, self.n_bins)  # для x, y
-        self.disp_up_bins = np.linspace(0.0, 1.0, self.n_bins)  # для z (только вверх)
         self.angle_bins = np.linspace(-self.max_angle, self.max_angle, self.n_bins)
 
     def action(self, action: np.ndarray):
@@ -293,7 +290,7 @@ class ActionWrapper(gym.ActionWrapper):
 
         dx = self.disp_bins[action[1]] * self.max_movement
         dy = self.disp_bins[action[2]] * self.max_movement
-        dz = self.disp_up_bins[action[3]] * self.max_movement
+        dz = self.disp_bins[action[3]] * self.max_movement
 
         yaw = self.angle_bins[action[4]]
 

@@ -31,7 +31,7 @@ class RewardCalculator:
         attraction_threshold: Optional[float] = None,
         placement_bonus: float = 5.0,
         movement_penalty_coeff: float = 0.1,
-        xy_alignment_bonus: float = 2.0,
+        xy_alignment_bonus: float = 0.5,
         max_reward_clip: Optional[float] = None,
     ):
         self.__block_length = block_length
@@ -43,7 +43,7 @@ class RewardCalculator:
         self.attraction_point: np.ndarray = np.array([0.0, 0.0, self.__block_height / 2])
         self.placed_blocks: List[int] = []
 
-        self.ATTRACTION_THRESHOLD = attraction_threshold or (0.3 * self.__block_height)
+        self.ATTRACTION_THRESHOLD = attraction_threshold or (self.__block_height)
 
         self.REWARD_SCALE = reward_scale
         self.SIGMA_PROXIMITY = sigma_proximity
