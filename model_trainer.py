@@ -3,7 +3,7 @@ from typing import Dict, List
 
 import numpy as np
 from tqdm import tqdm
-from environment import make_jenga_env
+from environment import make_jenga_env, jenga_get_state_dim, jenga_get_action_dims
 import gymnasium as gym
 from ppo import PPOAgent
 
@@ -28,8 +28,8 @@ class JengaML_Trainer:
         self.total_timesteps = total_timesteps
         self.n_steps = n_steps
 
-        state_dimensions: int = self.model_environment.get_state_dim()
-        action_dimensions: List[int] = model_environment.get_action_dims()
+        state_dimensions: int = jenga_get_state_dim(self.blocks_count)
+        action_dimensions: List[int] = jenga_get_action_dims(self.blocks_count)
 
         self.agent = PPOAgent()
         self.agent.initialize_network(

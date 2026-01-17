@@ -39,6 +39,23 @@ def quat_to_euler(w, x, y, z):
     euler = rot.as_euler('xyz', degrees=False)
     return euler[0], euler[1], euler[2]
 
+def get_state_volume__() -> int:
+        return 3 + 4  # how many variables in single "state" structure
+
+def jenga_get_state_dim(n_blocks: int) -> int:
+    return n_blocks * get_state_volume__()
+
+def jenga_get_action_dims(n_blocks: int) -> List[int]:
+    return [
+        n_blocks,              # индекс блока
+        BINS_COUNT,                 # перемещение по X (-1..1)
+        BINS_COUNT,                 # перемещение по Y (-1..1)
+        BINS_COUNT,                 # перемещение по Z (-1..1)
+        BINS_COUNT,                 # поворот вокруг X (-pi/4..pi/4)
+        BINS_COUNT,                 # поворот вокруг Y (-pi/4..pi/4)
+        BINS_COUNT,                 # поворот вокруг Z (-pi/2..pi/2)
+    ]
+
 class JengaEnv6DoF(gym.Env):
     def __init__(self, n_blocks):
         self.n_blocks = n_blocks
@@ -73,22 +90,11 @@ class JengaEnv6DoF(gym.Env):
         # Для дебаггинга
         self.step_count = 0
 
-    def _get_state_volume(self) -> int:
-        return 3 + 4  # how many variables in single "state" structure
-
-    def get_state_dim(self) -> int:
-        return self.n_blocks * self._get_state_volume()
-
-    def get_action_dims(self) -> List[int]:
-        return [
-            self.n_blocks,              # индекс блока
-            BINS_COUNT,                 # перемещение по X (-1..1)
-            BINS_COUNT,                 # перемещение по Y (-1..1)
-            BINS_COUNT,                 # перемещение по Z (-1..1)
-            BINS_COUNT,                 # поворот вокруг X (-pi/4..pi/4)
-            BINS_COUNT,                 # поворот вокруг Y (-pi/4..pi/4)
-            BINS_COUNT,                 # поворот вокруг Z (-pi/2..pi/2)
-        ]
+        # Observation: [x, y, z, qw, qx, qy, qz] * n_blocks
+        obs_dim = jenga_get_state_dim(self.n_blocks)
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
+        )
 
     def _generate_xml(self):
         rand_generated = random.randint(0, 1000000)
@@ -217,6 +223,8 @@ class JengaEnv6DoF(gym.Env):
         seed: int | None = None,
         options: Dict[str, Any] | None = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        super().reset(seed=seed)  # важно для gymnasium
+
         self.step_count = 0
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
@@ -225,8 +233,7 @@ class JengaEnv6DoF(gym.Env):
             mujoco.mj_step(self.model, self.data)
 
         state = self._get_current_state()
-
-        return state
+        return state, {}  # gymnasium требует dict
 
     # функция отображения, делает отображение по свойству render_mode (смотри gym.Env)
     # для простоты отрисовываем только один режим
@@ -274,74 +281,44 @@ class JengaEnv6DoF(gym.Env):
         return reward
 
 class ActionWrapper(gym.ActionWrapper):
-    def __init__(self, env: JengaEnv6DoF):
+    def __init__(self, env: JengaEnv6DoF, n_blocks: int):
         super().__init__(env)
 
-        # Диапазоны для перемещения (в долях от MAX_MOVEMENT_DISTANCE)
-        DISPLACEMENT_RANGE = 1.0  # от -1 до 1 относительно MAX_MOVEMENT_DISTANCE
-
-        # Диапазоны для вращения (в радианах)
-        ANGLE_RANGE = np.pi / 2
-
         self.n_bins = BINS_COUNT
+        self.max_movement = MAX_MOVEMENT_DISTANCE
+        self.max_angle = np.pi / 2  # 90 градусов
 
-        # Биннинг для перемещения
-        self.displacement_bins = np.linspace(
-            -DISPLACEMENT_RANGE,
-            DISPLACEMENT_RANGE,
-            self.n_bins
-        )
+        self.action_space = spaces.MultiDiscrete(jenga_get_action_dims(n_blocks))
 
-        self.displacement_up_bins = np.linspace(
-            0,
-            DISPLACEMENT_RANGE,
-            self.n_bins
-        )
+        self.disp_bins = np.linspace(-1.0, 1.0, self.n_bins)  # для x, y
+        self.disp_up_bins = np.linspace(0.0, 1.0, self.n_bins)  # для z (только вверх)
+        self.angle_bins = np.linspace(-self.max_angle, self.max_angle, self.n_bins)
 
-        # Биннинг для вращения
-        self.roll_pitch_bins = np.linspace(
-            -ANGLE_RANGE,
-            ANGLE_RANGE,
-            self.n_bins
-        )
+    def action(self, action: np.ndarray):
+        block_idx = int(action[0])
 
-        self.yaw_bins = np.linspace(
-            -ANGLE_RANGE,
-            ANGLE_RANGE,
-            self.n_bins
-        )
+        dx = self.disp_bins[action[1]] * self.max_movement
+        dy = self.disp_bins[action[2]] * self.max_movement
+        dz = self.disp_up_bins[action[3]] * self.max_movement
 
-        self.simulation = env
-
-    def action(self, action):
-        block_idx = action[0]
-
-        # Преобразуем дискретные значения в непрерывные перемещения
-        # Умножаем на MAX_MOVEMENT_DISTANCE для получения фактического перемещения
-        displacement_x = self.displacement_bins[action[1]] * MAX_MOVEMENT_DISTANCE
-        displacement_y = self.displacement_bins[action[2]] * MAX_MOVEMENT_DISTANCE
-        displacement_z = self.displacement_up_bins[action[3]] * MAX_MOVEMENT_DISTANCE
-
-        # Углы поворота
-        roll = self.roll_pitch_bins[action[4]]
-        pitch = self.roll_pitch_bins[action[5]]
-        yaw = self.yaw_bins[action[6]]
+        roll = self.angle_bins[action[4]]
+        pitch = self.angle_bins[action[5]]
+        yaw = self.angle_bins[action[6]]
 
         return {
             "block": block_idx,
-            "force": np.array([displacement_x, displacement_y, displacement_z], dtype=np.float32),
+            "force": np.array([dx, dy, dz], dtype=np.float32),
             "angular": np.array([roll, pitch, yaw], dtype=np.float32),
         }
 
-    def get_state_dim(self) -> int:
-        return self.simulation.get_state_dim()
+    def reverse_action(self, action):
+        # Не требуется для обучения, но можно оставить пустым
+        raise NotImplementedError
 
-    def get_action_dims(self) -> List[int]:
-        return self.simulation.get_action_dims()
 
-def make_jenga_env(n_blocks: int, render: bool = False) -> gym.ActionWrapper:
+def make_jenga_env(n_blocks: int, render: bool = False) -> gym.Env:
     env = JengaEnv6DoF(n_blocks=n_blocks)
     if render:
         env.render_mode = "human"
-    env = ActionWrapper(env)
+    env = ActionWrapper(env, n_blocks)
     return env
