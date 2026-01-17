@@ -51,9 +51,7 @@ def jenga_get_action_dims(n_blocks: int) -> List[int]:
         BINS_COUNT,                 # перемещение по X (-1..1)
         BINS_COUNT,                 # перемещение по Y (-1..1)
         BINS_COUNT,                 # перемещение по Z (-1..1)
-        BINS_COUNT,                 # поворот вокруг X (-pi/4..pi/4)
         BINS_COUNT,                 # поворот вокруг Y (-pi/4..pi/4)
-        BINS_COUNT,                 # поворот вокруг Z (-pi/2..pi/2)
     ]
 
 class JengaEnv6DoF(gym.Env):
@@ -123,12 +121,9 @@ class JengaEnv6DoF(gym.Env):
             y = float(np.round(np.random.uniform(-0.4, 0.4), 4))
             z = float(np.round(np.random.uniform(self.half_x, self.half_x * 2), 4))  # чуть выше пола
 
-            # случайный угол в радианах
-            roll = float(np.round(np.random.uniform(-np.pi/4, np.pi/4), 4))
-            pitch = float(np.round(np.random.uniform(-np.pi/4, np.pi/4), 4))
             yaw = float(np.round(np.random.uniform(-np.pi, np.pi), 4))
 
-            quat = euler_to_quat(roll, pitch, yaw)
+            quat = euler_to_quat(0, 0, yaw)
             quat_str = " ".join(map(str, quat.tolist()))
 
             color = "0.9 0.6 0.3 1" if i < self.n_blocks - 1 else "0.2 0.8 0.2 1"
@@ -200,15 +195,13 @@ class JengaEnv6DoF(gym.Env):
             current_quat[0], current_quat[1], current_quat[2], current_quat[3]
         )
 
-        max_angle = np.pi / 2  # 45 градусов
+        max_angle = np.pi / 2
         desired_angles = action["angular"]
         desired_angles = np.clip(desired_angles, -max_angle, max_angle)
 
-        new_roll = current_roll + desired_angles[0]
-        new_pitch = current_pitch + desired_angles[1]
-        new_yaw = current_yaw + desired_angles[2]
+        new_yaw = current_yaw + desired_angles[0]
 
-        new_quat = euler_to_quat(new_roll, new_pitch, new_yaw)
+        new_quat = euler_to_quat(0, 0, new_yaw)
 
         # Телепортируем блок
         jnt_qpos_index = self.model.jnt_qposadr[self.model.body_jntadr[body_id]]
@@ -314,14 +307,12 @@ class ActionWrapper(gym.ActionWrapper):
         dy = self.disp_bins[action[2]] * self.max_movement
         dz = self.disp_up_bins[action[3]] * self.max_movement
 
-        roll = self.angle_bins[action[4]]
-        pitch = self.angle_bins[action[5]]
-        yaw = self.angle_bins[action[6]]
+        yaw = self.angle_bins[action[4]]
 
         return {
             "block": block_idx,
             "force": np.array([dx, dy, dz], dtype=np.float32),
-            "angular": np.array([roll, pitch, yaw], dtype=np.float32),
+            "angular": np.array([yaw], dtype=np.float32),
         }
 
     def reverse_action(self, action):

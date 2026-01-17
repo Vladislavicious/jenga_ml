@@ -58,11 +58,11 @@ class RewardCalculator:
         # Экспоненциальная награда: чем ближе — тем больше
         # Используем exp(-k * d), чтобы избежать взрыва на d=0
         # Но лучше — вознаграждать за малое расстояние: reward = exp(-distance / sigma)
-        sigma = self.ATTRACTION_THRESHOLD  # характерная ширина "зоны интереса"
+        sigma = 0.4  # характерная ширина "зоны интереса"
         proximity_reward = np.exp(-distance_to_tp / sigma)
 
         if proximity_reward < 0.003:
-            proximity_reward = 0
+            proximity_reward = -0.5
 
         placement_bonus = 0.0
         if self._should_select_next_attraction_point():
