@@ -93,8 +93,7 @@ class JengaEnv6DoF(gym.Env):
         )
 
     def _generate_xml(self):
-        # rand_generated = random.randint(0, 1000000)
-        rand_generated = 1
+        rand_generated = random.randint(0, 1000000)
 
         xml_name = f"jenga_{rand_generated}.xml"
         if not os.path.exists(XML_FOLDER):
@@ -214,6 +213,36 @@ class JengaEnv6DoF(gym.Env):
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
 
+        for body_id in self.block_ids:
+            # Находим индекс сустава для этого блока
+            jnt_id = self.model.body_jntadr[body_id]
+            if jnt_id == -1:
+                continue  # пропускаем, если нет сустава
+
+            qpos_idx = self.model.jnt_qposadr[jnt_id]
+
+            pos = self.data.qpos[qpos_idx:qpos_idx+3].copy()
+            quat = self.data.qpos[qpos_idx+3:qpos_idx+7].copy()
+
+            pos[0] += np.random.uniform(-0.015, 0.015)  # X
+            pos[1] += np.random.uniform(-0.015, 0.015)  # Y
+            pos[2] += np.random.uniform(-0.005, 0.015)  # Z (меньше шума по высоте)
+
+            roll, pitch, yaw = quat_to_euler(quat[0], quat[1], quat[2], quat[3])
+            yaw += np.random.uniform(-0.087, 0.087)  # ±5 градусов в радианах
+            new_quat = euler_to_quat(0, 0, yaw)  # сохраняем только yaw
+
+            # 3. Обновляем состояние
+            self.data.qpos[qpos_idx:qpos_idx+3] = pos
+            self.data.qpos[qpos_idx+3:qpos_idx+7] = new_quat
+
+            # 4. Обнуляем скорость для стабильности
+            dof_idx = self.model.jnt_dofadr[jnt_id]
+            self.data.qvel[dof_idx:dof_idx+6] = 0.0
+
+        mujoco.mj_forward(self.model, self.data)
+
+        # Стабилизация после изменения позиций
         for _ in range(25):
             mujoco.mj_step(self.model, self.data)
 
@@ -304,9 +333,9 @@ class ActionWrapper(gym.ActionWrapper):
         raise NotImplementedError
 
 
-def make_jenga_env(n_blocks: int, render: bool = False) -> gym.Env:
+def make_jenga_env(n_blocks: int, render: bool = False, seed: int = 123) -> gym.Env:
     env = JengaEnv6DoF(n_blocks=n_blocks)
-    env.reset()
+    env.reset(seed=seed)
 
     if render:
         env.render_mode = "human"

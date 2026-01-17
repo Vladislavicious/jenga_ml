@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 @dataclass
 class BlockData:
-    initial_coords: np.ndarray
     current_coords: np.ndarray
     previous_coords: np.ndarray
     is_placed: bool = False
@@ -58,7 +57,6 @@ class RewardCalculator:
         if not self.is_initialized:
             for coords in block_coords:
                 block = BlockData(
-                    initial_coords=np.array(coords),
                     current_coords=np.array(coords),
                     previous_coords=np.array(coords)
                 )
