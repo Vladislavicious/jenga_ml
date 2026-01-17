@@ -92,6 +92,16 @@ class JengaEnv6DoF(gym.Env):
             low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
 
+        self._reinit_reward_calc()
+
+    def _reinit_reward_calc(self):
+        block_positions = []
+
+        for body_id in self.block_ids:
+            pos = self.data.xpos[body_id].copy()
+            block_positions.append(pos)
+        self.reward_calculator.initial_fill(block_coords=block_positions)
+
     def _generate_xml(self):
         rand_generated = random.randint(0, 1000000)
 
@@ -115,7 +125,7 @@ class JengaEnv6DoF(gym.Env):
         for i in range(self.n_blocks):
             x = float(np.round(np.random.uniform(-0.4, 0.4), 4))
             y = float(np.round(np.random.uniform(-0.4, 0.4), 4))
-            z = float(np.round(np.random.uniform(self.half_x, self.half_x * 2), 4))  # чуть выше пола
+            z = float(np.round(np.random.uniform(self.half_z, self.half_x * 2), 4))  # чуть выше пола
 
             yaw = float(np.round(np.random.uniform(-np.pi, np.pi), 4))
 
@@ -229,7 +239,7 @@ class JengaEnv6DoF(gym.Env):
             pos[2] += np.random.uniform(-0.005, 0.015)  # Z (меньше шума по высоте)
 
             roll, pitch, yaw = quat_to_euler(quat[0], quat[1], quat[2], quat[3])
-            yaw += np.random.uniform(-0.087, 0.087)  # ±5 градусов в радианах
+            yaw += np.random.uniform(-(np.pi / 18), (np.pi / 18))
             new_quat = euler_to_quat(0, 0, yaw)  # сохраняем только yaw
 
             # 3. Обновляем состояние
@@ -243,10 +253,12 @@ class JengaEnv6DoF(gym.Env):
         mujoco.mj_forward(self.model, self.data)
 
         # Стабилизация после изменения позиций
-        for _ in range(25):
+        for _ in range(50):
             mujoco.mj_step(self.model, self.data)
 
         state = self._get_current_state()
+        self._reinit_reward_calc()
+
         return state, {}  # gymnasium требует dict
 
     def render(self):

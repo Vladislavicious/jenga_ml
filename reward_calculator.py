@@ -39,7 +39,7 @@ class RewardCalculator:
 
         self.blocks: List[BlockData] = []
         self.current_block_index: int = -1
-        self.attraction_point: np.ndarray = np.array([0.0, 0.0, self.__block_height / 2])
+        self.attraction_point: np.ndarray = np.array([0.0, 0.0, 0.0])
         self.placed_blocks: List[int] = []
 
         self.ATTRACTION_THRESHOLD = attraction_threshold or (self.__block_height)
@@ -53,19 +53,21 @@ class RewardCalculator:
 
         self.is_initialized = False
 
+    def initial_fill(self, block_coords: List[np.ndarray]) -> None:
+        for coords in block_coords:
+            block = BlockData(
+                current_coords=np.array(coords),
+                previous_coords=np.array(coords)
+            )
+            self.blocks.append(block)
+        self.is_initialized = True
+        self._select_next_current_block()
+        self.attraction_point[2] = self.get_current_block().current_coords[2]
+
+
     def fill_physics(self, block_coords: List[np.ndarray]) -> None:
-        if not self.is_initialized:
-            for coords in block_coords:
-                block = BlockData(
-                    current_coords=np.array(coords),
-                    previous_coords=np.array(coords)
-                )
-                self.blocks.append(block)
-            self.is_initialized = True
-            self._select_next_current_block()
-        else:
-            for i, (block, new_coords) in enumerate(zip(self.blocks, block_coords)):
-                block.update_coords(new_coords)
+        for i, (block, new_coords) in enumerate(zip(self.blocks, block_coords)):
+            block.update_coords(new_coords)
 
     def calculate_reward(self) -> float:
         if not self.blocks or self.current_block_index == -1:
@@ -151,6 +153,6 @@ class RewardCalculator:
     def reset(self) -> None:
         self.blocks.clear()
         self.current_block_index = -1
-        self.attraction_point = np.array([0.0, 0.0, self.__block_height / 2])
+        self.attraction_point = np.array([0.0, 0.0, 0.0])
         self.placed_blocks.clear()
         self.is_initialized = False
