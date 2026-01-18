@@ -12,7 +12,7 @@ from typing import Any, Dict, List, SupportsFloat, Tuple
 import scipy
 from scipy.spatial.transform import Rotation
 
-from reward_calculator import FakeRewardCalculator
+from reward_calculator import RewardCalculator
 
 XML_FOLDER = "configurations"
 
@@ -22,10 +22,12 @@ BLOCK_LENGTH_Y = 0.025  # Ширина блока (0.0125 * 2)
 BLOCK_LENGTH_Z = 0.015  # Высота блока (0.0075 * 2)
 
 # Максимальное перемещение за один шаг
-MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Y / 2
-NUM_STABILIZATION_STEPS = 5
+MAX_MOVEMENT_DISTANCE = BLOCK_LENGTH_Z / 3
+NUM_STABILIZATION_STEPS = 1
 
-BINS_COUNT = 21
+BINS_COUNT = 3
+
+NO_RANDOM = True
 
 def euler_to_quat(roll, pitch, yaw):
     rot = Rotation.from_euler('xyz', [roll, pitch, yaw])
@@ -39,40 +41,37 @@ def quat_to_euler(w, x, y, z):
     euler = rot.as_euler('xyz', degrees=False)
     return euler[0], euler[1], euler[2]
 
-def are_blocks_touching(pos1: np.ndarray, ori1: np.ndarray, size1: np.ndarray,
-                        pos2: np.ndarray, ori2: np.ndarray, size2: np.ndarray,
-                        tolerance: float = 1e-3) -> bool:
-    half_size1 = size1 / 2.0
-    half_size2 = size2 / 2.0
+def get_state_volume__() -> int:
+        return 3 + 4  # how many variables in single "state" structure
 
-    # Проверка пересечения по каждой оси
-    for i in range(3):
-        if abs(pos1[i] - pos2[i]) > (half_size1[i] + half_size2[i] + tolerance):
-            return False
+def jenga_get_state_dim(n_blocks: int) -> int:
+    return n_blocks * get_state_volume__()
 
-    return True
-
+def jenga_get_action_dims(n_blocks: int) -> List[int]:
+    return [
+        n_blocks,              # индекс блока
+        BINS_COUNT,                 # перемещение по X (-1..1)
+        BINS_COUNT,                 # перемещение по Y (-1..1)
+        BINS_COUNT,                 # перемещение по Z (-1..1)
+        BINS_COUNT,                 # поворот вокруг Y (-pi/4..pi/4)
+    ]
 
 class JengaEnv6DoF(gym.Env):
     def __init__(self, n_blocks):
-        self.n_blocks = n_blocks
+        self.max_blocks = n_blocks
+        self.curriculum_level = 1
 
-        # Полуразмеры блока (используем для расчетов)
         self.half_x = BLOCK_LENGTH_X / 2
         self.half_y = BLOCK_LENGTH_Y / 2
         self.half_z = BLOCK_LENGTH_Z / 2
-        self.block_size = np.array([BLOCK_LENGTH_X, BLOCK_LENGTH_Y, BLOCK_LENGTH_Z])
 
-        # Генерация XML
         self.xml_path = self._generate_xml()
 
-        # Загрузка модели и данных
         self.model = mujoco.MjModel.from_xml_path(self.xml_path)
         self.data = mujoco.MjData(self.model)
 
-        assert(self.model.nbody == self.n_blocks + 1)
+        assert(self.model.nbody == self.max_blocks + 1)
 
-        # Получаем имена и ID блоков
         self.block_names = []
         for i in range(self.model.nbody):
             name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, i)
@@ -85,31 +84,38 @@ class JengaEnv6DoF(gym.Env):
         self.viewer = None
         self._render_counter = 0
 
-        self.reward_calculator = FakeRewardCalculator()
+        self.reward_calculator = RewardCalculator(block_length=BLOCK_LENGTH_X,
+                                                  block_width=BLOCK_LENGTH_Y,
+                                                  block_height=BLOCK_LENGTH_Z)
 
-        # Для дебаггинга
         self.step_count = 0
 
-    def _get_state_volume(self) -> int:
-        return 3 + 4 + 3 + 3  # how many variables in single "state" structure
-        # pos, quat, block_positions ,block_orientations
+        obs_dim = jenga_get_state_dim(self.max_blocks)
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
+        )
 
-    def get_state_dim(self) -> int:
-        return self.n_blocks * self._get_state_volume()
+        self._reinit_reward_calc()
 
-    def get_action_dims(self) -> List[int]:
-        return [
-            self.n_blocks,              # индекс блока
-            BINS_COUNT,                 # перемещение по X (-1..1)
-            BINS_COUNT,                 # перемещение по Y (-1..1)
-            BINS_COUNT,                 # перемещение по Z (-1..1)
-            BINS_COUNT,                 # поворот вокруг X (-pi/4..pi/4)
-            BINS_COUNT,                 # поворот вокруг Y (-pi/4..pi/4)
-            BINS_COUNT,                 # поворот вокруг Z (-pi/2..pi/2)
-        ]
+    def set_curriculum_level(self, level: int):
+        assert 1 <= level <= self.max_blocks
+        self.curriculum_level = level
+        self.reward_calculator.reset()  # сбросить состояние наград
+
+    def _reinit_reward_calc(self):
+        block_positions = []
+
+        for body_id in self.block_ids:
+            pos = self.data.xpos[body_id].copy()
+            block_positions.append(pos)
+        self.reward_calculator.initial_fill(block_coords=block_positions)
 
     def _generate_xml(self):
-        rand_generated = random.randint(0, 1000000)
+        if NO_RANDOM:
+            rand_generated = 1
+        else:
+            rand_generated = random.randint(0, 1000000)
+
         xml_name = f"jenga_{rand_generated}.xml"
         if not os.path.exists(XML_FOLDER):
             os.mkdir(XML_FOLDER)
@@ -127,21 +133,17 @@ class JengaEnv6DoF(gym.Env):
 
         bodies = []
 
-        for i in range(self.n_blocks):
-            # случайная позиция блока
+        for i in range(self.max_blocks):
             x = float(np.round(np.random.uniform(-0.4, 0.4), 4))
             y = float(np.round(np.random.uniform(-0.4, 0.4), 4))
-            z = float(np.round(np.random.uniform(0.02, 0.15), 4))  # чуть выше пола
+            z = float(np.round(np.random.uniform(self.half_z, self.half_x * 2), 4))  # чуть выше пола
 
-            # случайный угол в радианах
-            roll = float(np.round(np.random.uniform(-np.pi/4, np.pi/4), 4))
-            pitch = float(np.round(np.random.uniform(-np.pi/4, np.pi/4), 4))
             yaw = float(np.round(np.random.uniform(-np.pi, np.pi), 4))
 
-            quat = euler_to_quat(roll, pitch, yaw)
+            quat = euler_to_quat(0, 0, yaw)
             quat_str = " ".join(map(str, quat.tolist()))
 
-            color = "0.9 0.6 0.3 1" if i < self.n_blocks - 1 else "0.2 0.8 0.2 1"
+            color = "0.9 0.6 0.3 1" if i < self.max_blocks - 1 else "0.2 0.8 0.2 1"
 
             body_xml = f'''
     <body name="block_{i}" pos="{x} {y} {z}" quat="{quat_str}">
@@ -159,67 +161,30 @@ class JengaEnv6DoF(gym.Env):
         xml_text = header + "".join(bodies) + footer
         with open(xml_path, "w", encoding="utf-8") as f:
             f.write(xml_text)
-        print(f">>> XML создан: {xml_path}")
+
         return xml_path
-
-    def _compute_max_height(self) -> float:
-        max_height = -10000.0
-        for body_id in self.block_ids:
-            height = self.data.xpos[body_id][2]
-            if height > max_height:
-                max_height = height
-        return max_height
-
-    def _count_collisioned_blocks(self) -> int:
-        collisioned = set()
-
-        block_positions = []
-        block_orientations = []
-
-        for body_id in self.block_ids:
-            pos = self.data.xpos[body_id].copy()
-            quat = self.data.xquat[body_id].copy()
-            block_positions.append(pos)
-            block_orientations.append(quat)
-
-        for i in range(self.n_blocks):
-            for j in range(i + 1, self.n_blocks):
-                if are_blocks_touching(
-                    block_positions[i], block_orientations[i], self.block_size,
-                    block_positions[j], block_orientations[j], self.block_size
-                ):
-                    collisioned.add(i)
-                    collisioned.add(j)
-
-        return len(collisioned)
 
     def step(
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]:
 
         self.step_count += 1
-
-        # Применяем телепортацию
         self._apply_teleportation(action)
 
-        # Выполняем несколько шагов физики для стабилизации
         for _ in range(NUM_STABILIZATION_STEPS):
             mujoco.mj_step(self.model, self.data)
 
-        # Получаем состояние после стабилизации
         state = self._get_current_state()
-
-        # Вычисляем награду
         reward = self._calculate_reward(state)
 
-        terminated = self._check_termination(state)
+        done = self._check_done()
         truncated = False
 
         info = {
             "step": self.step_count,
         }
 
-        return state, reward, terminated, truncated, info
+        return state, reward, done, truncated, info
 
     def _apply_teleportation(self, action):
         block_idx = action["block"]
@@ -241,15 +206,11 @@ class JengaEnv6DoF(gym.Env):
             current_quat[0], current_quat[1], current_quat[2], current_quat[3]
         )
 
-        max_angle = np.pi / 4  # 45 градусов
         desired_angles = action["angular"]
-        desired_angles = np.clip(desired_angles, -max_angle, max_angle)
 
-        new_roll = current_roll + desired_angles[0]
-        new_pitch = current_pitch + desired_angles[1]
-        new_yaw = current_yaw + desired_angles[2]
+        new_yaw = current_yaw + desired_angles[0]
 
-        new_quat = euler_to_quat(new_roll, new_pitch, new_yaw)
+        new_quat = euler_to_quat(0, 0, new_yaw)
 
         # Телепортируем блок
         jnt_qpos_index = self.model.jnt_qposadr[self.model.body_jntadr[body_id]]
@@ -266,23 +227,71 @@ class JengaEnv6DoF(gym.Env):
         seed: int | None = None,
         options: Dict[str, Any] | None = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        super().reset(seed=seed)  # важно для gymnasium
+        self.reward_calculator.reset()
+
         self.step_count = 0
         mujoco.mj_resetData(self.model, self.data)
         mujoco.mj_forward(self.model, self.data)
 
+        for body_id in self.block_ids:
+            # Находим индекс сустава для этого блока
+            jnt_id = self.model.body_jntadr[body_id]
+            if jnt_id == -1:
+                continue  # пропускаем, если нет сустава
+
+            qpos_idx = self.model.jnt_qposadr[jnt_id]
+
+            pos = self.data.qpos[qpos_idx:qpos_idx+3].copy()
+            quat = self.data.qpos[qpos_idx+3:qpos_idx+7].copy()
+
+            roll, pitch, yaw = quat_to_euler(quat[0], quat[1], quat[2], quat[3])
+
+            if not NO_RANDOM:
+                pos[0] += np.random.uniform(-0.015, 0.015)  # X
+                pos[1] += np.random.uniform(-0.015, 0.015)  # Y
+                pos[2] += np.random.uniform(-0.005, 0.015)  # Z (меньше шума по высоте)
+
+                yaw += np.random.uniform(-(np.pi / 18), (np.pi / 18))
+
+            new_quat = euler_to_quat(0, 0, yaw)  # сохраняем только yaw
+
+            # 3. Обновляем состояние
+            self.data.qpos[qpos_idx:qpos_idx+3] = pos
+            self.data.qpos[qpos_idx+3:qpos_idx+7] = new_quat
+
+            # 4. Обнуляем скорость для стабильности
+            dof_idx = self.model.jnt_dofadr[jnt_id]
+            self.data.qvel[dof_idx:dof_idx+6] = 0.0
+
+        mujoco.mj_forward(self.model, self.data)
+
+        # Стабилизация после изменения позиций
+        for _ in range(50):
+            mujoco.mj_step(self.model, self.data)
+
         state = self._get_current_state()
+        self._reinit_reward_calc()
 
-        return state
+        return state, {}  # gymnasium требует dict
 
-    # функция отображения, делает отображение по свойству render_mode (смотри gym.Env)
-    # для простоты отрисовываем только один режим
     def render(self):
         if self.render_mode == "human":
             self._render_frame()
 
         return None
 
-    # вспомогательная функция для отображения текущего состояния
+    def debug_output(self):
+        block_positions = []
+
+        for body_id in self.block_ids:
+            pos = self.data.xpos[body_id].copy()
+            block_positions.append(pos)
+
+        print("")
+        for i, pos in enumerate(block_positions):
+            print(f"block {i}: {pos}")
+
     def _render_frame(self):
         if self.viewer is None:
             self.viewer = viewer.launch_passive(self.model, self.data)
@@ -290,18 +299,13 @@ class JengaEnv6DoF(gym.Env):
         self.viewer.sync()
         self._render_counter += 1
 
-    # вспомогательная функция для получения текущего состоянияы
     def _get_current_state(self) -> np.ndarray:
         state = []
         for body_id in self.block_ids:
             pos = self.data.xpos[body_id]
             quat = self.data.xquat[body_id]
-            lin_vel = self.data.cvel[body_id][:3]
-            ang_vel = self.data.cvel[body_id][3:]
             state.extend(pos)
             state.extend(quat)
-            state.extend(lin_vel)
-            state.extend(ang_vel)
         return np.array(state, dtype=np.float32)
 
     def close(self):
@@ -309,106 +313,63 @@ class JengaEnv6DoF(gym.Env):
             self.viewer.close()
             self.viewer = None
 
-    def _calculate_grouping_coef(self, state: np.ndarray) -> float:
-        distances = []
-
-        for i in range(self.n_blocks):
-            x_idx = i * self._get_state_volume()
-            y_idx = x_idx + 1
-
-            x_pos = state[x_idx]
-            y_pos = state[y_idx]
-
-            distance = np.sqrt(x_pos**2 + y_pos**2)
-            distances.append(distance)
-
-        mean_distance = np.mean(distances)
-
-        return (BLOCK_LENGTH_X * 3) - mean_distance
-
-    def _check_termination(self, state: np.ndarray) -> bool:
-        # Проверяем, не упали ли блоки слишком низко
-        return False
+    def _check_done(self) -> bool:
+        return len(self.reward_calculator.get_placed_blocks()) == self.max_blocks
 
     def _calculate_reward(self, state: np.ndarray) -> float:
-        block_grouping = self._calculate_grouping_coef(state)
-        max_height = self._compute_max_height()
-        collisioned_blocks = self._count_collisioned_blocks()
+        block_positions = []
 
-        self.reward_calculator.fill_physics(
-            max_height=max_height,
-            block_grouping=block_grouping,
-            collisioned_blocks=collisioned_blocks)
+        for body_id in self.block_ids:
+            pos = self.data.xpos[body_id].copy()
+            block_positions.append(pos)
 
+        self.reward_calculator.fill_physics(block_positions)
         reward = self.reward_calculator.calculate_reward()
         return reward
 
-
 class ActionWrapper(gym.ActionWrapper):
-    def __init__(self, env: JengaEnv6DoF):
+    def __init__(self, env: JengaEnv6DoF, n_blocks: int):
         super().__init__(env)
 
-        # Диапазоны для перемещения (в долях от MAX_MOVEMENT_DISTANCE)
-        DISPLACEMENT_RANGE = 1.0  # от -1 до 1 относительно MAX_MOVEMENT_DISTANCE
-
-        # Диапазоны для вращения (в радианах)
-        ROLL_PITCH_RANGE = np.pi / 4  # ±45 градусов
-        YAW_RANGE = np.pi / 2  # ±90 градусов
-
         self.n_bins = BINS_COUNT
+        self.max_movement = MAX_MOVEMENT_DISTANCE
+        self.max_angle = np.pi / 4  # 90 градусов
 
-        # Биннинг для перемещения
-        self.displacement_bins = np.linspace(
-            -DISPLACEMENT_RANGE,
-            DISPLACEMENT_RANGE,
-            self.n_bins
-        )
+        self.action_space = spaces.MultiDiscrete(jenga_get_action_dims(n_blocks))
 
-        # Биннинг для вращения
-        self.roll_pitch_bins = np.linspace(
-            -ROLL_PITCH_RANGE,
-            ROLL_PITCH_RANGE,
-            self.n_bins
-        )
+        self.disp_bins = np.linspace(-1.0, 1.0, self.n_bins)  # для x, y
+        self.angle_bins = np.linspace(-self.max_angle, self.max_angle, self.n_bins)
 
-        self.yaw_bins = np.linspace(
-            -YAW_RANGE,
-            YAW_RANGE,
-            self.n_bins
-        )
+    def action(self, action: np.ndarray):
+        block_idx = int(action[0])
 
-        self.simulation = env
+        if block_idx >= self.env.curriculum_level:
+            # Можно: игнорировать действие, или выбрать случайный разрешённый блок
+            block_idx = min(block_idx, self.env.curriculum_level - 1)
 
-    def action(self, action):
-        block_idx = action[0]
+        dx = self.disp_bins[action[1]] * self.max_movement
+        dy = self.disp_bins[action[2]] * self.max_movement
+        dz = self.disp_bins[action[3]] * self.max_movement
 
-        # Преобразуем дискретные значения в непрерывные перемещения
-        # Умножаем на MAX_MOVEMENT_DISTANCE для получения фактического перемещения
-        displacement_x = self.displacement_bins[action[1]] * MAX_MOVEMENT_DISTANCE
-        displacement_y = self.displacement_bins[action[2]] * MAX_MOVEMENT_DISTANCE
-        displacement_z = self.displacement_bins[action[3]] * MAX_MOVEMENT_DISTANCE
-
-        # Углы поворота
-        roll = self.roll_pitch_bins[action[4]]
-        pitch = self.roll_pitch_bins[action[5]]
-        yaw = self.yaw_bins[action[6]]
+        yaw = self.angle_bins[action[4]]
 
         return {
             "block": block_idx,
-            "force": np.array([displacement_x, displacement_y, displacement_z], dtype=np.float32),
-            "angular": np.array([roll, pitch, yaw], dtype=np.float32),
+            "force": np.array([dx, dy, dz], dtype=np.float32),
+            "angular": np.array([yaw], dtype=np.float32),
         }
 
-    def get_state_dim(self) -> int:
-        return self.simulation.get_state_dim()
+    def reverse_action(self, action):
+        raise NotImplementedError
 
-    def get_action_dims(self) -> List[int]:
-        return self.simulation.get_action_dims()
+    def set_curriculum_level(self, level: int):
+        self.env.set_curriculum_level(level)
 
-
-def make_jenga_env(n_blocks: int, render: bool = False) -> gym.ActionWrapper:
+def make_jenga_env(n_blocks: int, render: bool = False, seed: int = 123) -> gym.Env:
     env = JengaEnv6DoF(n_blocks=n_blocks)
+    env.reset(seed=seed)
+
     if render:
         env.render_mode = "human"
-    env = ActionWrapper(env)
+    env = ActionWrapper(env, n_blocks)
     return env
