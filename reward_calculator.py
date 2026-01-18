@@ -30,7 +30,7 @@ class RewardCalculator:
         attraction_threshold: Optional[float] = None,
         placement_bonus: float = 5.0,
         movement_penalty_coeff: float = 0.1,
-        xy_alignment_bonus: float = 0.5,
+        xy_alignment_bonus: float = 2.0,
         max_reward_clip: Optional[float] = None,
     ):
         self.__block_length = block_length
@@ -62,7 +62,8 @@ class RewardCalculator:
             self.blocks.append(block)
         self.is_initialized = True
         self._select_next_current_block()
-        self.attraction_point[2] = self.get_current_block().current_coords[2]
+
+        self.attraction_point = np.array([0.0, 0.0, self.__block_height / 2])
 
 
     def fill_physics(self, block_coords: List[np.ndarray]) -> None:
