@@ -210,3 +210,6 @@ configurations/
 models/
 MJDATA.TXT
 MUJOCO_LOG.TXT
+
+*.zip
+models/
