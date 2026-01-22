@@ -76,6 +76,8 @@ jupyter notebook main.ipynb
 
 :heavy_check_mark: Проведно обучение на параллельно запущенных environment (также с помощью библиотеки stable_baselines3).
 
+![обучение модели](https://drive.google.com/uc?export=view&id=1wTi4L4_ksyxbkYoKA3LlIJsnbk4e0bHk)
+
 :heavy_check_mark: Реализованы сохранение и загрузка модели.
 
 :heavy_check_mark: Проведение тестов.
