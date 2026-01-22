@@ -1,0 +1,10 @@
+from jengaa import environment as E
+
+def test_state_helpers():
+    assert E.get_state_volume__() == 7
+    assert E.jenga_get_state_dim(1) == 7
+    assert E.jenga_get_state_dim(5) == 35
+
+def test_action_dims():
+    dims = E.jenga_get_action_dims(10)
+    assert dims == [10, E.BINS_COUNT, E.BINS_COUNT, E.BINS_COUNT, E.BINS_COUNT]
