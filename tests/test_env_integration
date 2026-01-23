@@ -1,0 +1,33 @@
+import numpy as np
+import pytest
+
+from jengaa import environment as E
+
+
+def test_env_reset_and_step_smoke(tmp_path, monkeypatch):
+    
+    monkeypatch.setattr(E, "XML_FOLDER", str(tmp_path))
+    monkeypatch.setattr(E, "NO_RANDOM", True)
+
+    
+    try:
+        env = E.make_jenga_env(n_blocks=2, render=False, seed=123)
+    except Exception as ex:
+        pytest.skip(f"MuJoCo env could not be created: {ex}")
+
+    obs, info = env.reset(seed=123)
+    assert isinstance(info, dict)
+    assert obs.shape == (E.jenga_get_state_dim(2),)
+    assert obs.dtype == np.float32
+
+    
+    a = env.action_space.sample()
+    obs2, reward, done, truncated, info2 = env.step(a)
+
+    assert obs2.shape == obs.shape
+    assert isinstance(reward, (float, np.floating))
+    assert isinstance(done, (bool, np.bool_))
+    assert isinstance(truncated, (bool, np.bool_))
+    assert isinstance(info2, dict)
+
+    env.close()
