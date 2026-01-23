@@ -1,0 +1,3 @@
+def test_import_environment_and_reward():
+    from jengaa import environment
+    from jengaa import reward_calculator
