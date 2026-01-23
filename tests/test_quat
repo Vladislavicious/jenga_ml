@@ -1,0 +1,15 @@
+import numpy as np
+from jengaa import environment as E
+
+def test_euler_quat_roundtrip():
+    roll, pitch, yaw = 0.1, -0.2, 0.3
+    q = E.euler_to_quat(roll, pitch, yaw)  # [w, x, y, z]
+
+    r2, p2, y2 = E.quat_to_euler(q[0], q[1], q[2], q[3])
+
+    def wrap(a):
+        return (a + np.pi) % (2*np.pi) - np.pi
+
+    assert abs(wrap(r2 - roll)) < 1e-5
+    assert abs(wrap(p2 - pitch)) < 1e-5
+    assert abs(wrap(y2 - yaw)) < 1e-5
