@@ -1,0 +1,64 @@
+import numpy as np
+from jengaa.reward_calculator import RewardCalculator
+
+def test_reward_init_and_current_block_selected():
+    rc = RewardCalculator(block_length=0.075, block_width=0.025, block_height=0.015)
+    blocks = [
+        np.array([0.0, 0.0, 0.02]),
+        np.array([0.1, 0.0, 0.02]),
+        np.array([-0.1, 0.0, 0.02]),
+    ]
+    rc.initial_fill(blocks)
+
+    assert rc.is_initialized is True
+    assert rc.current_block_index != -1
+    assert rc.get_current_block() is not None
+
+
+def test_proximity_reward_higher_when_close():
+    rc = RewardCalculator(block_length=0.075, block_width=0.025, block_height=0.015)
+    blocks = [
+        np.array([0.0, 0.0, 0.02]),
+        np.array([0.2, 0.0, 0.02]),
+    ]
+    rc.initial_fill(blocks)
+
+    
+    far_positions = [
+        np.array([5.0, 5.0, 5.0]),
+        np.array([0.2, 0.0, 0.02]),
+    ]
+    rc.fill_physics(far_positions)
+    r_far = rc.calculate_reward()
+
+    
+    close = rc.attraction_point.copy()
+    close_positions = [
+        close,
+        np.array([0.2, 0.0, 0.02]),
+    ]
+    rc.fill_physics(close_positions)
+    r_close = rc.calculate_reward()
+
+    assert r_close > r_far
+
+
+def test_placing_block_increases_placed_blocks():
+    rc = RewardCalculator(block_length=0.075, block_width=0.025, block_height=0.015)
+    blocks = [
+        np.array([0.0, 0.0, 0.02]),
+        np.array([0.2, 0.0, 0.02]),
+    ]
+    rc.initial_fill(blocks)
+
+    before = len(rc.get_placed_blocks())
+
+    close = rc.attraction_point.copy()
+    rc.fill_physics([
+        close,
+        np.array([0.2, 0.0, 0.02]),
+    ])
+    _ = rc.calculate_reward()
+
+    after = len(rc.get_placed_blocks())
+    assert after == before + 1
